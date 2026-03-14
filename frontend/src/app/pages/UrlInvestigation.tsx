@@ -30,6 +30,12 @@ import { Line } from 'react-chartjs-2';
 import { Sidebar } from '../components/Sidebar';
 import { CredibilityGauge } from '../components/CredibilityGauge';
 import { useDarkMode } from '../components/DarkModeContext';
+import {
+  analyzeDomainSecurity,
+  analyzeRedditPropagation,
+  type DomainSecurityResult,
+  type RedditPropagationResponse,
+} from '../services/api';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -73,6 +79,10 @@ export function UrlInvestigation() {
   const [isInvestigating, setIsInvestigating] = useState(false);
   const [activeStep, setActiveStep] = useState(-1);
   const [showResults, setShowResults] = useState(true);
+  const [domainResult, setDomainResult] = useState<DomainSecurityResult | null>(null);
+  const [redditResult, setRedditResult] = useState<RedditPropagationResponse | null>(null);
+  const [investigationError, setInvestigationError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const steps: ProgressStep[] = [
     { id: 'extract', label: 'Extracting article content' },
@@ -105,6 +115,48 @@ export function UrlInvestigation() {
     return () => window.clearInterval(interval);
   }, [isInvestigating, steps.length]);
 
+  const runInvestigation = async () => {
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) {
+      setInvestigationError('Please enter a valid URL before starting investigation.');
+      return;
+    }
+
+    setInvestigationError(null);
+
+    try {
+      const [domainResponse, redditResponse] = await Promise.all([
+        analyzeDomainSecurity({ url: trimmedUrl }),
+        analyzeRedditPropagation({
+          query: trimmedUrl,
+          limit: 10,
+          include_comments: false,
+          comments_per_post: 0,
+          sort: 'new',
+          time_filter: 'day',
+        }),
+      ]);
+
+      setDomainResult(domainResponse.results[0] || null);
+      setRedditResult(redditResponse);
+      setLastUpdated(new Date());
+    } catch (error) {
+      setInvestigationError(error instanceof Error ? error.message : 'Failed to connect to backend services.');
+    }
+  };
+
+  useEffect(() => {
+    if (!showResults || isInvestigating) return;
+
+    void runInvestigation();
+
+    const interval = window.setInterval(() => {
+      void runInvestigation();
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [showResults, isInvestigating, url]);
+
   const trustedArticles: TrustedArticle[] = [
     {
       title: 'Reuters fact-check confirms policy proposal is still under review',
@@ -126,26 +178,40 @@ export function UrlInvestigation() {
     },
   ];
 
+  const domainRisk = domainResult?.domain_risk || 'unknown';
+  const spreadNodes = redditResult?.analysis.spread_nodes || 0;
+  const riskBaseScore = domainRisk === 'high' ? 22 : domainRisk === 'medium' ? 45 : domainRisk === 'low' ? 78 : 60;
+  const investigationScore = Math.max(5, Math.min(95, riskBaseScore - Math.min(spreadNodes, 20)));
+
+  const clusterCounts = redditResult?.analysis.clusters.map((cluster) => cluster.event_count) || [];
   const lineChartData = useMemo(() => ({
-    labels: ['08:00', '09:30', '11:00', '12:30', '14:00', '15:30'],
+    labels: clusterCounts.length ? clusterCounts.map((_, index) => `Cluster ${index + 1}`) : ['Live Feed'],
     datasets: [
       {
         label: 'Narrative Spread Volume',
-        data: [4, 12, 28, 41, 33, 18],
+        data: clusterCounts.length ? clusterCounts : [redditResult?.events_count || 0],
         borderColor: '#22D3EE',
         backgroundColor: 'rgba(34,211,238,0.18)',
         tension: 0.35,
         fill: true,
       },
     ],
-  }), []);
+  }), [clusterCounts, redditResult?.events_count]);
 
-  const similarityBreakdown = useMemo(() => ([
-    { label: 'Reuters', score: 91, color: '#22C55E', tier: 'High Trust' },
-    { label: 'BBC', score: 87, color: '#16A34A', tier: 'High Trust' },
-    { label: 'AP', score: 83, color: '#3B82F6', tier: 'Trusted' },
-    { label: 'Blog Cluster', score: 29, color: '#EF4444', tier: 'Low Trust' },
-  ]), []);
+  const similarityBreakdown = useMemo(() => {
+    if (!trustedArticles.length) {
+      return [
+        { label: 'Live Source Match', score: 50, color: '#F59E0B', tier: 'Pending' },
+      ];
+    }
+
+    return trustedArticles.map((article) => ({
+      label: article.source,
+      score: article.similarity,
+      color: article.similarity >= 80 ? '#22C55E' : article.similarity >= 60 ? '#3B82F6' : '#F59E0B',
+      tier: article.similarity >= 80 ? 'High Trust' : article.similarity >= 60 ? 'Trusted' : 'Watch',
+    }));
+  }, [trustedArticles]);
 
   const chartOptions = {
     responsive: true,
@@ -165,40 +231,69 @@ export function UrlInvestigation() {
     },
   };
 
-  const cytoscapeElements = [
-    { data: { id: 'seed', label: 'Seed URL' } },
-    { data: { id: 'x', label: 'X / Social' } },
-    { data: { id: 'blogs', label: 'Blog Cluster' } },
-    { data: { id: 'reuters', label: 'Reuters' } },
-    { data: { id: 'bbc', label: 'BBC' } },
-    { data: { id: 'fact', label: 'Fact-checkers' } },
-    { data: { source: 'seed', target: 'x' } },
-    { data: { source: 'seed', target: 'blogs' } },
-    { data: { source: 'seed', target: 'reuters' } },
-    { data: { source: 'reuters', target: 'bbc' } },
-    { data: { source: 'bbc', target: 'fact' } },
-    { data: { source: 'blogs', target: 'x' } },
-  ];
+  const cytoscapeElements = useMemo(() => {
+    if (!redditResult?.analysis.graph.nodes.length) {
+      return [
+        { data: { id: 'seed', label: 'Seed URL' } },
+      ];
+    }
+
+    const nodeElements = redditResult.analysis.graph.nodes.map((node) => ({
+      data: { id: node, label: node },
+    }));
+
+    const edgeElements = redditResult.analysis.graph.edges.map((edge) => ({
+      data: { source: edge.source, target: edge.target, weight: edge.weight },
+    }));
+
+    return [...nodeElements, ...edgeElements];
+  }, [redditResult]);
 
   const metricCards = [
-    { icon: ShieldCheck, label: 'Verification Result', value: 'Unverified', accent: '#FBBF24', note: 'Conflicting reports still active' },
-    { icon: Globe, label: 'Domain Age', value: '2.3 yrs', accent: '#22D3EE', note: 'Registered recently' },
-    { icon: Lock, label: 'Security Status', value: 'HTTPS', accent: '#22C55E', note: 'TLS enabled, no malware flags' },
-    { icon: ShieldAlert, label: 'Phishing Risk', value: 'Low', accent: '#F97316', note: 'Domain pattern partially suspicious' },
+    {
+      icon: ShieldCheck,
+      label: 'Verification Result',
+      value: domainRisk === 'high' ? 'High Risk' : domainRisk === 'medium' ? 'Mixed' : domainRisk === 'low' ? 'Safer' : 'Unknown',
+      accent: domainRisk === 'high' ? '#EF4444' : domainRisk === 'medium' ? '#F59E0B' : '#22C55E',
+      note: domainResult?.reason || 'Awaiting backend domain analysis',
+    },
+    {
+      icon: Globe,
+      label: 'Domain',
+      value: domainResult?.domain || 'Unknown',
+      accent: '#22D3EE',
+      note: 'Resolved from backend URL analysis',
+    },
+    {
+      icon: Lock,
+      label: 'Security Status',
+      value: url.startsWith('https://') ? 'HTTPS' : 'HTTP',
+      accent: url.startsWith('https://') ? '#22C55E' : '#F97316',
+      note: url.startsWith('https://') ? 'Encrypted transport detected' : 'Unencrypted transport',
+    },
+    {
+      icon: ShieldAlert,
+      label: 'Narrative Spread Nodes',
+      value: String(spreadNodes || 0),
+      accent: '#F97316',
+      note: 'Live Reddit propagation graph nodes',
+    },
   ];
 
   const urlExplanationPoints = [
     {
       title: 'Claim Framing',
-      body: 'The article is built on a real topic, but it escalates the urgency beyond what trusted reporting currently supports.'
+      body: domainResult?.reason || 'The article framing will be evaluated once domain intelligence is available.'
     },
     {
       title: 'Source Reliability',
-      body: 'The domain does not present strong malicious indicators, but its weaker reputation and limited maturity prevent it from being treated as a high-confidence source.'
+      body: domainResult?.domain ? `Domain under review: ${domainResult.domain}` : 'Domain metadata is being retrieved from backend analysis.'
     },
     {
       title: 'Amplification Pattern',
-      body: 'The narrative is spreading faster through lower-trust redistribution channels than through established editorial networks, which increases distortion risk.'
+      body: redditResult
+        ? `Propagation graph detected ${redditResult.analysis.spread_nodes} unique accounts and ${redditResult.events_count} total events.`
+        : 'Propagation graph will populate once Reddit analysis completes.'
     }
   ];
 
@@ -256,7 +351,10 @@ export function UrlInvestigation() {
                 <motion.button
                   whileHover={{ y: -3, scale: 1.01 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => setIsInvestigating(true)}
+                  onClick={() => {
+                    setIsInvestigating(true);
+                    void runInvestigation();
+                  }}
                   className="inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-[#3B82F6] to-[#22D3EE] px-8 py-4 text-white shadow-[0_18px_40px_rgba(34,211,238,0.24)]"
                 >
                   <SearchCheck className="w-5 h-5" />
@@ -265,9 +363,16 @@ export function UrlInvestigation() {
                 <div className={`rounded-2xl border px-4 py-3 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-[#F8FAFC] border-[#E2E8F0]'}`}>
                   <p className={`text-xs uppercase tracking-[0.18em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Investigation State</p>
                   <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{isInvestigating ? 'Running AI pipeline' : 'Ready for analysis'}</p>
+                  {lastUpdated && <p className="text-xs text-[#22D3EE] mt-1">Live refresh: {lastUpdated.toLocaleTimeString()}</p>}
                 </div>
               </div>
             </div>
+
+            {investigationError && (
+              <div className="mt-6 rounded-xl border border-[#EF4444]/30 bg-[#EF4444]/10 px-4 py-3 text-sm text-[#FCA5A5]">
+                {investigationError}
+              </div>
+            )}
           </div>
 
           <div className={`rounded-2xl border p-6 ${isDarkMode ? 'bg-[#111827] border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
@@ -318,7 +423,7 @@ export function UrlInvestigation() {
                     <div className="rounded-full border border-[#FBBF24]/30 bg-[#FBBF24]/10 px-3 py-1 text-sm text-[#FBBF24]">Unverified</div>
                   </div>
                   <div className="flex items-center justify-center">
-                    <CredibilityGauge score={62} />
+                    <CredibilityGauge score={investigationScore} />
                   </div>
                 </div>
 
@@ -532,17 +637,25 @@ export function UrlInvestigation() {
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#93C5FD]' : 'text-[#1D4ED8]'}`}>AI Verdict</p>
-                        <h3 className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>This URL is not clearly malicious, but the article is not reliable enough to stand on its own.</h3>
+                        <h3 className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
+                          {domainRisk === 'high'
+                            ? 'The URL has high-risk domain signals and should be treated as potentially unsafe.'
+                            : domainRisk === 'medium'
+                              ? 'The URL has mixed risk indicators and needs secondary verification.'
+                              : domainRisk === 'low'
+                                ? 'The domain appears safer, but narrative validation still matters.'
+                                : 'Risk signal is inconclusive until more threat intelligence is available.'}
+                        </h3>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <span className="inline-flex items-center rounded-full border border-[#F59E0B]/20 bg-[#F59E0B]/10 px-3 py-1 text-xs text-[#F59E0B]">Confidence: Moderate</span>
-                        <span className="inline-flex items-center rounded-full border border-[#22C55E]/20 bg-[#22C55E]/10 px-3 py-1 text-xs text-[#22C55E]">Malware Risk: Low</span>
-                        <span className="inline-flex items-center rounded-full border border-[#EF4444]/20 bg-[#EF4444]/10 px-3 py-1 text-xs text-[#EF4444]">Narrative Risk: Elevated</span>
+                        <span className="inline-flex items-center rounded-full border border-[#F59E0B]/20 bg-[#F59E0B]/10 px-3 py-1 text-xs text-[#F59E0B]">Confidence: Live backend</span>
+                        <span className="inline-flex items-center rounded-full border border-[#22C55E]/20 bg-[#22C55E]/10 px-3 py-1 text-xs text-[#22C55E]">Domain Risk: {domainRisk}</span>
+                        <span className="inline-flex items-center rounded-full border border-[#EF4444]/20 bg-[#EF4444]/10 px-3 py-1 text-xs text-[#EF4444]">Spread Nodes: {spreadNodes}</span>
                       </div>
                     </div>
 
                     <p className={`leading-relaxed ${isDarkMode ? 'text-[#CBD5E1]' : 'text-[#475569]'}`}>
-                      The investigation finds a mixed signal. The URL does not show strong malware or phishing characteristics, but the article overstates the underlying story compared with higher-trust coverage.
+                      {domainResult?.reason || 'The investigation is waiting for backend domain intelligence and propagation data.'}
                     </p>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -558,7 +671,7 @@ export function UrlInvestigation() {
                     </div>
 
                     <p className={`leading-relaxed ${isDarkMode ? 'text-[#CBD5E1]' : 'text-[#475569]'}`}>
-                      Practical takeaway: treat this page as a monitoring signal, not a primary source. It may help track how the narrative is spreading, but factual conclusions should be anchored to more established publishers.
+                      Practical takeaway: use this as a real-time monitoring signal. Final trust decisions should combine backend risk indicators, source quality, and editorial judgment.
                     </p>
                   </div>
                 </motion.div>

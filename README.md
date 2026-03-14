@@ -1,54 +1,95 @@
 # OriginX
 
-OriginX is a misinformation analysis backend built with FastAPI.
+OriginX is a full-stack misinformation analysis platform:
+
+- Backend: FastAPI services for claim verification, domain security checks, and propagation analysis.
+- Frontend: React + Vite dashboard connected directly to backend APIs.
+
+The frontend and backend are now connected and running with live data flow:
+
+- Verify Claim page calls backend claim-verification APIs.
+- URL Investigation page calls backend domain + Reddit propagation APIs.
+- URL Investigation auto-refreshes backend results every 30 seconds for real-time monitoring.
 
 ## Project Structure
 
-- `backend/`: FastAPI application, services, tests, and SQL setup scripts.
-- `backend/app/`: API routes, business logic, and configuration.
-- `backend/sql/`: Supabase schema and policy setup.
-- `backend/tests/`: Automated test suite.
+- backend/: FastAPI application, services, tests, SQL setup scripts.
+- backend/app/: API routes, business logic, and configuration.
+- backend/sql/: Supabase schema and policy setup.
+- backend/tests/: Automated backend test suite.
+- frontend/: React/Vite application.
+- frontend/src/app/pages/: Main user pages, including Verify Claim and URL Investigation.
 
 ## Prerequisites
 
 - Python 3.11+
-- A virtual environment (recommended)
+- Node.js 18+ (Node.js 20 LTS recommended)
+- npm 9+
 - Supabase project credentials (for database-backed features)
 
-## Quick Start
+## 1) Backend Setup
 
-1. Move to the backend folder:
+From the repository root:
 
 ```bash
 cd backend
-```
-
-2. Create and activate a virtual environment:
-
-```bash
 python -m venv .venv
 # Windows PowerShell
 .\.venv\Scripts\Activate.ps1
-```
-
-3. Install dependencies:
-
-```bash
 pip install -r requirements.txt
 ```
 
-4. Configure environment variables:
+Create backend/.env from backend/.env.example and set required values:
 
-- Copy values from `.env.example` into `.env`.
-- Set required keys like `SUPABASE_URL` and `SUPABASE_KEY`.
+- SUPABASE_URL
+- SUPABASE_KEY
 
-5. Run the API:
+Optional but recommended for frontend integration:
+
+- BACKEND_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+
+Run backend:
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-The API will be available at `http://127.0.0.1:8000`.
+Backend URL: http://127.0.0.1:8000
+
+## 2) Frontend Setup
+
+Open another terminal from repository root:
+
+```bash
+cd frontend
+npm install
+```
+
+Create frontend/.env from frontend/.env.example:
+
+```text
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
+Run frontend:
+
+```bash
+npm run dev
+```
+
+Frontend URL (default): http://localhost:5173
+
+## Real-Time Integration Behavior
+
+- Verify Claim (frontend -> POST /verify-claim)
+  - Sends claim text to backend.
+  - Receives verdict, credibility score, summary, and evidence sources.
+  - Displays backend warnings/errors in UI.
+
+- URL Investigation (frontend -> POST /analysis/domain-security and /analysis/reddit-propagation)
+  - Runs live domain security and propagation checks.
+  - Renders backend propagation graph data.
+  - Automatically refreshes every 30 seconds while page is active.
 
 ## Health Check
 
@@ -66,25 +107,22 @@ Expected response:
 
 ## Database Setup (Supabase)
 
-Run the SQL script in Supabase SQL Editor:
+Run SQL in Supabase SQL Editor:
 
-- `backend/sql/init_supabase.sql`
-
-Additional SQL setup notes are available in:
-
-- `backend/sql/README.md`
+- backend/sql/init_supabase.sql
 
 ## Running Tests
 
-From `backend/`:
+Backend tests:
 
 ```bash
+cd backend
 pytest -q
 ```
 
 ## API Docs
 
-When the server is running:
+When backend is running:
 
-- Swagger UI: `http://127.0.0.1:8000/docs`
-- ReDoc: `http://127.0.0.1:8000/redoc`
+- Swagger UI: http://127.0.0.1:8000/docs
+- ReDoc: http://127.0.0.1:8000/redoc

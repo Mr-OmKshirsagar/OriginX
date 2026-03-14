@@ -70,7 +70,7 @@ def _check_verification_history_direct(claim_text: str) -> dict[str, Any] | None
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select verification_result, verdict, credibility_score, summary
+                select verification_result, verdict, credibility_score, summary, sources
                 from public.verification_history
                 where claim_text = %s
                 order by created_at desc
@@ -88,6 +88,7 @@ def _check_verification_history_direct(claim_text: str) -> dict[str, Any] | None
         "verdict": row[1],
         "credibility_score": row[2],
         "summary": row[3],
+        "sources": row[4],
     }
 
 
@@ -190,7 +191,7 @@ def check_verification_history(claim_text: str) -> dict[str, Any] | None:
     response = _run_with_timeout(
         lambda: (
             supabase.table("verification_history")
-            .select("verification_result, verdict, credibility_score, summary")
+            .select("verification_result, verdict, credibility_score, summary, sources")
             .eq("claim_text", claim_text)
             .order("created_at", desc=True)
             .limit(1)

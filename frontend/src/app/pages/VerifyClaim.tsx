@@ -25,6 +25,7 @@ import { Sidebar } from '../components/Sidebar';
 import { CredibilityGauge } from '../components/CredibilityGauge';
 import { NetworkBackground } from '../components/NetworkBackground';
 import { useDarkMode } from '../components/DarkModeContext';
+import { verifyClaim, type VerifyClaimResponse } from '../services/api';
 
 interface Article {
   id: number;
@@ -146,11 +147,12 @@ export function VerifyClaim() {
   const [showResults, setShowResults] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState('English');
+  const [verificationData, setVerificationData] = useState<VerifyClaimResponse | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analyzedAt, setAnalyzedAt] = useState<Date | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Mock data
-  const credibilityScore = 82;
-  const articles: Article[] = [
+  const fallbackArticles: Article[] = [
     {
       id: 1,
       title: 'Government Announces New Electric Vehicle Initiative for 2026',
@@ -188,6 +190,25 @@ export function VerifyClaim() {
       logo: '⚠️'
     }
   ];
+
+  const articles: Article[] = verificationData?.sources?.length
+    ? verificationData.sources.map((source, index) => {
+        const similarityRaw = typeof source.similarity_score === 'number' ? source.similarity_score : 45;
+        const similarity = similarityRaw > 1 ? similarityRaw / 100 : similarityRaw;
+
+        return {
+          id: index + 1,
+          title: source.title || source.description || `Evidence item ${index + 1}`,
+          source: source.source || 'Unknown source',
+          date: analyzedAt
+            ? analyzedAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+            : 'Live now',
+          similarity: Math.max(0, Math.min(similarity, 1)),
+          url: source.url || '#',
+          logo: '📰'
+        };
+      })
+    : fallbackArticles;
 
   const timeline: TimelineEvent[] = [
     { date: 'Jan 4, 2026', event: 'Initial online mention detected', source: 'Social Media' },
@@ -266,33 +287,38 @@ export function VerifyClaim() {
   const analyzedTimestamp = new Intl.DateTimeFormat('en-US', {
     dateStyle: 'long',
     timeStyle: 'short'
-  }).format(new Date());
+  }).format(analyzedAt || new Date());
+
+  const credibilityScore = Math.round(Number(verificationData?.credibility_score ?? 82));
 
   const trustedSources = articles.filter((article) => article.similarity >= 0.7);
   const suspiciousSources = articles.filter((article) => article.similarity < 0.7);
 
+  const fallbackVerdict = credibilityScore >= 75 ? 'Likely true' : credibilityScore >= 50 ? 'Uncertain' : 'Likely false';
+  const verdictLabel = verificationData?.verdict || fallbackVerdict;
+
   const verificationVerdict = credibilityScore >= 75
     ? {
-        label: 'Likely True',
-        status: 'Active Analysis',
+        label: verdictLabel,
+        status: verificationData ? 'Live backend analysis' : 'Active Analysis',
         accent: '#22C55E',
         glow: 'rgba(34,197,94,0.18)',
-        badge: 'Multi-Source Verified'
+        badge: verificationData?.status === 'found' ? 'Served from verification history' : 'Multi-Source Verified'
       }
     : credibilityScore >= 50
       ? {
-          label: 'Uncertain',
-          status: 'Needs Review',
+          label: verdictLabel,
+          status: verificationData ? 'Live backend analysis' : 'Needs Review',
           accent: '#3B82F6',
           glow: 'rgba(59,130,246,0.18)',
-          badge: 'Mixed Signal Pattern'
+          badge: verificationData?.status === 'found' ? 'Served from verification history' : 'Mixed Signal Pattern'
         }
       : {
-          label: 'Likely False',
-          status: 'High Risk Signal',
+          label: verdictLabel,
+          status: verificationData ? 'Live backend analysis' : 'High Risk Signal',
           accent: '#EF4444',
           glow: 'rgba(239,68,68,0.18)',
-          badge: 'Conflicting Evidence'
+          badge: verificationData?.status === 'found' ? 'Served from verification history' : 'Conflicting Evidence'
         };
 
   const trustIndicators = [
@@ -305,16 +331,16 @@ export function VerifyClaim() {
     {
       icon: ShieldCheck,
       label: 'Trusted Sources Found',
-      value: 12,
-      note: 'Independent publishers aligned',
+      value: trustedSources.length,
+      note: 'Live evidence from backend',
       accent: '#22C55E',
       glow: 'rgba(34,197,94,0.18)'
     },
     {
       icon: ShieldAlert,
       label: 'Suspicious Sources',
-      value: 3,
-      note: 'Domains flagged for low trust',
+      value: suspiciousSources.length,
+      note: 'Needs additional verification',
       accent: '#EF4444',
       glow: 'rgba(239,68,68,0.18)'
     },
@@ -324,14 +350,14 @@ export function VerifyClaim() {
       value: 2.3,
       decimals: 1,
       suffix: 's',
-      note: 'Full pipeline completion',
+      note: verificationData?.status === 'found' ? 'Served from cache/history' : 'Full backend pipeline completion',
       accent: '#22D3EE',
       glow: 'rgba(34,211,238,0.18)'
     },
     {
       icon: Bot,
       label: 'AI Confidence Level',
-      value: 94,
+      value: credibilityScore,
       suffix: '%',
       note: 'Model certainty rating',
       accent: '#3B82F6',
@@ -339,18 +365,21 @@ export function VerifyClaim() {
     }
   ];
 
+  const summaryText = verificationData?.summary || 'Run analysis to get an AI-generated evidence summary from the backend.';
+  const summaryParts = summaryText.split(/(?<=[.!?])\s+/).filter(Boolean);
+
   const explanationPoints = [
     {
-      title: 'Multiple trusted publishers report the same core event',
-      body: 'Reuters, BBC News, and Associated Press independently describe the same policy movement with closely aligned facts and timing.'
+      title: 'Backend summary insight',
+      body: summaryParts[0] || summaryText
     },
     {
-      title: 'High semantic similarity across reliable sources',
-      body: 'Similarity scores above 79% indicate that the main details in the submitted claim strongly overlap with trusted reporting.'
+      title: 'Cross-source consistency',
+      body: summaryParts[1] || 'The backend compares supporting coverage and computes consistency signals.'
     },
     {
-      title: 'Limited conflicting evidence from low-credibility outlets',
-      body: 'The contradictory headline is concentrated in one unverified source, suggesting exaggeration rather than a broad factual dispute.'
+      title: 'Conflicting evidence check',
+      body: summaryParts[2] || 'Lower-confidence sources are separated so reviewers can quickly inspect outliers.'
     }
   ];
 
@@ -364,34 +393,27 @@ export function VerifyClaim() {
 
   const handleAnalyze = async () => {
     if (!claim.trim()) return;
-    
+
     setIsAnalyzing(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsAnalyzing(false);
-    setShowResults(true);
+    setAnalysisError(null);
+
+    try {
+      const response = await verifyClaim(claim.trim());
+      setVerificationData(response);
+      setAnalyzedAt(new Date());
+      setShowResults(true);
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : 'Failed to connect to backend.');
+      setShowResults(false);
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   useEffect(() => {
     if (!shouldAutoAnalyze) return;
 
-    let isMounted = true;
-
-    const autoAnalyze = async () => {
-      setIsAnalyzing(true);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      if (!isMounted) return;
-
-      setIsAnalyzing(false);
-      setShowResults(true);
-    };
-
-    void autoAnalyze();
-
-    return () => {
-      isMounted = false;
-    };
+    void handleAnalyze();
   }, [shouldAutoAnalyze]);
 
   useEffect(() => {
@@ -477,6 +499,18 @@ export function VerifyClaim() {
                 />
               </label>
             </div>
+
+            {analysisError && (
+              <div className="mt-4 rounded-xl border border-[#EF4444]/30 bg-[#EF4444]/10 px-4 py-3 text-sm text-[#FCA5A5]">
+                {analysisError}
+              </div>
+            )}
+
+            {verificationData?.warning && (
+              <div className="mt-4 rounded-xl border border-[#F59E0B]/30 bg-[#F59E0B]/10 px-4 py-3 text-sm text-[#FCD34D]">
+                {verificationData.warning}
+              </div>
+            )}
           </div>
 
           {/* Results */}
@@ -586,7 +620,7 @@ export function VerifyClaim() {
                             </div>
                             <div className="rounded-2xl border border-white/8 bg-white/5 p-4 backdrop-blur-md">
                               <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Primary Signal</p>
-                              <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>High similarity across trusted publishers</p>
+                              <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{summaryParts[0] || 'High similarity across trusted publishers'}</p>
                             </div>
                           </div>
                         </div>
@@ -652,7 +686,7 @@ export function VerifyClaim() {
                       className="rounded-2xl border border-[#22D3EE]/15 bg-gradient-to-br from-[#3B82F6]/10 to-[#22D3EE]/5 p-5"
                     >
                       <p className={`leading-relaxed ${isDarkMode ? 'text-[#E2E8F0]' : 'text-[#334155]'}`}>
-                        Verdict summary: the submitted claim is consistent with reporting from major publishers, carries a high semantic overlap with trusted source narratives, and does not show strong conflicting evidence beyond a small set of low-credibility amplifiers.
+                        Verdict summary: {summaryText}
                       </p>
                     </motion.div>
                   </div>

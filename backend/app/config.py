@@ -17,6 +17,14 @@ class Settings:
     VIRUSTOTAL_API_KEY: str = os.getenv("VIRUSTOTAL_API_KEY", "")
     OPENPHISH_FEED_URL: str = os.getenv("OPENPHISH_FEED_URL", "")
     REDDIT_USER_AGENT: str = os.getenv("REDDIT_USER_AGENT", "")
+    BACKEND_CORS_ORIGINS: list[str] = [
+        origin.strip()
+        for origin in os.getenv(
+            "BACKEND_CORS_ORIGINS",
+            "http://localhost:5173,http://127.0.0.1:5173",
+        ).split(",")
+        if origin.strip()
+    ]
 
 
 settings = Settings()

@@ -65,12 +65,15 @@ def verify_claim(payload: VerifyClaimRequest) -> dict:
         if previous_result:
             previous_verification_result = str(previous_result.get("verification_result", ""))
             previous_verdict = previous_result.get("verdict") or _verdict_from_result(previous_verification_result)
+            previous_sources = previous_result.get("sources") if isinstance(previous_result.get("sources"), list) else []
             return {
                 "status": "found",
                 "verification_result": previous_verification_result,
                 "verdict": previous_verdict,
                 "credibility_score": previous_result.get("credibility_score"),
                 "summary": previous_result.get("summary"),
+                "articles_found": len(previous_sources),
+                "sources": previous_sources,
             }
 
         insert_claim(processed_text)
