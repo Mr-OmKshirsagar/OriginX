@@ -3,14 +3,15 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Search, Filter, Download, ExternalLink, Calendar, Database, ChevronDown, Check } from 'lucide-react';
 import { Sidebar } from '../components/Sidebar';
 import { useDarkMode } from '../components/DarkModeContext';
+import { getHistoryVerifications, type HistoryVerificationItem } from '../services/api';
 
 interface HistoryItem {
-  id: number;
+  id: string;
   claim: string;
   credibilityScore: number;
-  date: string;
+  createdAt: string;
   sourcesFound: number;
-  status: 'Verified True' | 'Likely True' | 'Uncertain' | 'Likely False' | 'Verified False';
+  status: string;
 }
 
 export function History() {
@@ -19,15 +20,17 @@ export function History() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('date');
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+  const [historyData, setHistoryData] = useState<HistoryItem[]>([]);
+  const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(30);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const statusDropdownRef = useRef<HTMLDivElement>(null);
 
   const statusOptions = [
     { value: 'all', label: 'All Status' },
-    { value: 'Verified True', label: 'Verified True' },
     { value: 'Likely True', label: 'Likely True' },
     { value: 'Uncertain', label: 'Uncertain' },
     { value: 'Likely False', label: 'Likely False' },
-    { value: 'Verified False', label: 'Verified False' }
   ];
 
   useEffect(() => {
@@ -52,72 +55,70 @@ export function History() {
     };
   }, []);
 
-  const historyData: HistoryItem[] = [
-    {
-      id: 1,
-      claim: 'Government banned petrol cars in 2026',
-      credibilityScore: 82,
-      date: 'March 11, 2026',
-      sourcesFound: 12,
-      status: 'Likely True'
-    },
-    {
-      id: 2,
-      claim: 'New vaccine prevents all respiratory diseases',
-      credibilityScore: 23,
-      date: 'March 10, 2026',
-      sourcesFound: 8,
-      status: 'Likely False'
-    },
-    {
-      id: 3,
-      claim: 'Tech company announces major layoffs',
-      credibilityScore: 91,
-      date: 'March 9, 2026',
-      sourcesFound: 24,
-      status: 'Verified True'
-    },
-    {
-      id: 4,
-      claim: 'Climate summit delayed to 2027',
-      credibilityScore: 56,
-      date: 'March 8, 2026',
-      sourcesFound: 6,
-      status: 'Uncertain'
-    },
-    {
-      id: 5,
-      claim: 'New tax policy implemented this month',
-      credibilityScore: 78,
-      date: 'March 7, 2026',
-      sourcesFound: 15,
-      status: 'Likely True'
-    },
-    {
-      id: 6,
-      claim: 'Cryptocurrency becomes legal tender worldwide',
-      credibilityScore: 18,
-      date: 'March 6, 2026',
-      sourcesFound: 4,
-      status: 'Verified False'
-    },
-    {
-      id: 7,
-      claim: 'New renewable energy breakthrough announced',
-      credibilityScore: 85,
-      date: 'March 5, 2026',
-      sourcesFound: 19,
-      status: 'Verified True'
-    },
-    {
-      id: 8,
-      claim: 'Global internet outage expected next week',
-      credibilityScore: 12,
-      date: 'March 4, 2026',
-      sourcesFound: 2,
-      status: 'Verified False'
+  const normalizeStatus = (item: HistoryVerificationItem, score: number): string => {
+    const normalizedVerdict = (item.verdict || '').toLowerCase().trim();
+    if (normalizedVerdict.includes('false')) return 'Likely False';
+    if (normalizedVerdict.includes('true')) return 'Likely True';
+    if (normalizedVerdict.includes('uncertain')) return 'Uncertain';
+
+    const normalizedResult = (item.verification_result || '').toLowerCase();
+    if (normalizedResult === 'true') return 'Likely True';
+    if (normalizedResult === 'false') return 'Likely False';
+
+    if (score >= 70) return 'Likely True';
+    if (score >= 40) return 'Uncertain';
+    return 'Likely False';
+  };
+
+  const formatDisplayDate = (isoDate: string): string => {
+    const parsed = new Date(isoDate);
+    if (Number.isNaN(parsed.getTime())) return 'Unknown date';
+    return parsed.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
+  const loadHistory = async () => {
+    setIsLoadingHistory(true);
+    setHistoryError(null);
+
+    try {
+      const response = await getHistoryVerifications({ limit: 500 });
+      const mapped: HistoryItem[] = response.items.map((item) => {
+        const score = Number.isFinite(Number(item.credibility_score))
+          ? Math.round(Number(item.credibility_score))
+          : 50;
+
+        return {
+          id: item.id,
+          claim: item.claim_text,
+          credibilityScore: score,
+          createdAt: item.created_at,
+          sourcesFound: item.sources_count,
+          status: normalizeStatus(item, score),
+        };
+      });
+
+      setHistoryData(mapped);
+      setRefreshIntervalSeconds(response.refresh_interval_seconds || 30);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : 'Failed to load history records.');
+    } finally {
+      setIsLoadingHistory(false);
     }
-  ];
+  };
+
+  useEffect(() => {
+    void loadHistory();
+
+    const intervalId = window.setInterval(() => {
+      void loadHistory();
+    }, Math.max(5, refreshIntervalSeconds) * 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [refreshIntervalSeconds]);
 
   const getScoreColor = (score: number) => {
     if (score >= 70) return '#22C55E';
@@ -136,7 +137,7 @@ export function History() {
     return {
       text: color,
       border: `${color}33`,
-      shadow: `0 0 0 1px ${color}22, 0 8px 20px ${color}12`
+      shadow: `0 0 0 1px ${color}22, 0 8px 20px ${color}12`,
     };
   };
 
@@ -145,17 +146,27 @@ export function History() {
     return {
       text: color,
       border: `${color}3D`,
-      shadow: `0 0 16px ${color}12`
+      shadow: `0 0 16px ${color}12`,
     };
   };
 
-  const selectedStatusLabel = statusOptions.find(option => option.value === filterStatus)?.label || 'All Status';
+  const selectedStatusLabel = statusOptions.find((option) => option.value === filterStatus)?.label || 'All Status';
 
-  const filteredData = historyData.filter(item => {
-    const matchesSearch = item.claim.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || item.status === filterStatus;
-    return matchesSearch && matchesFilter;
-  });
+  const filteredData = historyData
+    .filter((item) => {
+      const matchesSearch = item.claim.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesFilter = filterStatus === 'all' || item.status === filterStatus;
+      return matchesSearch && matchesFilter;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'score') return b.credibilityScore - a.credibilityScore;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+  const trueCount = historyData.filter((item) => item.status.includes('True')).length;
+  const falseCount = historyData.filter((item) => item.status.includes('False')).length;
+  const uncertainCount = historyData.filter((item) => item.status === 'Uncertain').length;
+  const accuracyRate = historyData.length ? `${((trueCount / historyData.length) * 100).toFixed(1)}%` : '0.0%';
 
   return (
     <div className={`min-h-screen transition-all duration-300 ${isDarkMode ? 'bg-[#0B1120]' : 'bg-[#F8FAFC]'}`}>
@@ -163,20 +174,32 @@ export function History() {
 
       <div className="ml-64 p-8">
         <div className="max-w-7xl mx-auto">
-          {/* Header */}
           <div className="mb-8">
             <h1 className={`text-3xl font-bold mb-2 transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>Verification History</h1>
             <p className={`transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>Browse and manage your past verifications</p>
+            <p className={`text-sm mt-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
+              Live sync from database every {refreshIntervalSeconds}s.
+            </p>
           </div>
 
-          {/* Filters and Search */}
+          {historyError && (
+            <div className="mb-6 rounded-2xl border border-[#EF4444]/30 bg-[#EF4444]/10 px-4 py-3 text-sm text-[#FCA5A5]">
+              {historyError}
+            </div>
+          )}
+
+          {isLoadingHistory && !historyData.length && (
+            <div className={`mb-6 rounded-2xl border px-4 py-3 text-sm ${isDarkMode ? 'border-[#334155] bg-[#0F172A] text-[#93C5FD]' : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]'}`}>
+              Loading verification history from database...
+            </div>
+          )}
+
           <div className={`rounded-2xl border p-6 mb-6 transition-all duration-300 ${
             isDarkMode
               ? 'bg-[#1F2937] border-[#374151] shadow-lg shadow-[#3B82F6]/5 hover:shadow-[#3B82F6]/15'
               : 'bg-white border-[#E2E8F0] shadow-sm hover:shadow-md'
           }`}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Search */}
               <div className="md:col-span-2">
                 <div className="relative">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
@@ -186,13 +209,14 @@ export function History() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search claims..."
                     className={`w-full pl-12 pr-4 py-3 border rounded-xl outline-none focus:border-[#3B82F6] focus:ring-2 focus:ring-[#3B82F6]/20 transition-all ${
-                      isDarkMode ? 'bg-[#0F172A] border-[#334155] text-white placeholder:text-[#64748B]' : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A] placeholder:text-[#94A3B8]'
+                      isDarkMode
+                        ? 'bg-[#0F172A] border-[#334155] text-white placeholder:text-[#64748B]'
+                        : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A] placeholder:text-[#94A3B8]'
                     }`}
                   />
                 </div>
               </div>
 
-              {/* Filter */}
               <div className="flex gap-2">
                 <div className="flex-1 relative" ref={statusDropdownRef}>
                   <button
@@ -260,14 +284,13 @@ export function History() {
                   </AnimatePresence>
                 </div>
 
-                <button className="px-4 py-3 bg-[#3B82F6] text-white rounded-xl hover:bg-[#2563EB] transition-all">
+                <button title="Export history" className="px-4 py-3 bg-[#3B82F6] text-white rounded-xl hover:bg-[#2563EB] transition-all">
                   <Download className="w-5 h-5" />
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Stats Summary */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className={`rounded-xl border p-4 transition-all duration-300 hover:-translate-y-0.5 ${
               isDarkMode
@@ -283,9 +306,7 @@ export function History() {
                 : 'bg-white border-[#E2E8F0] hover:shadow-md hover:border-[#CBD5E1]'
             }`}>
               <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>True Claims</p>
-              <p className="text-2xl text-[#22C55E]">
-                {historyData.filter(item => item.status.includes('True')).length}
-              </p>
+              <p className="text-2xl text-[#22C55E]">{trueCount}</p>
             </div>
             <div className={`rounded-xl border p-4 transition-all duration-300 hover:-translate-y-0.5 ${
               isDarkMode
@@ -293,9 +314,7 @@ export function History() {
                 : 'bg-white border-[#E2E8F0] hover:shadow-md hover:border-[#CBD5E1]'
             }`}>
               <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>False Claims</p>
-              <p className="text-2xl text-[#EF4444]">
-                {historyData.filter(item => item.status.includes('False')).length}
-              </p>
+              <p className="text-2xl text-[#EF4444]">{falseCount}</p>
             </div>
             <div className={`rounded-xl border p-4 transition-all duration-300 hover:-translate-y-0.5 ${
               isDarkMode
@@ -303,13 +322,10 @@ export function History() {
                 : 'bg-white border-[#E2E8F0] hover:shadow-md hover:border-[#CBD5E1]'
             }`}>
               <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Uncertain</p>
-              <p className="text-2xl text-[#FBBF24]">
-                {historyData.filter(item => item.status === 'Uncertain').length}
-              </p>
+              <p className="text-2xl text-[#FBBF24]">{uncertainCount}</p>
             </div>
           </div>
 
-          {/* History Table */}
           <div className={`rounded-2xl border shadow-sm overflow-hidden transition-colors ${
             isDarkMode ? 'bg-[#1E293B] border-[#334155]' : 'bg-white border-[#E2E8F0]'
           }`}>
@@ -344,50 +360,50 @@ export function History() {
 
                         return (
                           <>
-                      <td className="px-6 py-4">
-                        <p className={`max-w-md ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{item.claim}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <span
-                            className="text-xl"
-                            style={{
-                              color: scoreStyle.text,
-                              textShadow: scoreStyle.shadow
-                            }}
-                          >
-                            {item.credibilityScore}%
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div
-                          className="inline-flex px-5 py-2 rounded-full text-sm border backdrop-blur-sm"
-                          style={{
-                            background: 'transparent',
-                            color: statusStyle.text,
-                            borderColor: statusStyle.border,
-                            boxShadow: statusStyle.shadow
-                          }}
-                        >
-                          {item.status}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className={`flex items-center gap-2 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
-                          <Calendar className="w-4 h-4" />
-                          <span>{item.date}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>{item.sourcesFound}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <button className="text-[#3B82F6] hover:text-[#2563EB] flex items-center gap-1 text-sm">
-                          View
-                          <ExternalLink className="w-4 h-4" />
-                        </button>
-                      </td>
+                            <td className="px-6 py-4">
+                              <p className={`max-w-md ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{item.claim}</p>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <span
+                                  className="text-xl"
+                                  style={{
+                                    color: scoreStyle.text,
+                                    textShadow: scoreStyle.shadow,
+                                  }}
+                                >
+                                  {item.credibilityScore}%
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div
+                                className="inline-flex px-5 py-2 rounded-full text-sm border backdrop-blur-sm"
+                                style={{
+                                  background: 'transparent',
+                                  color: statusStyle.text,
+                                  borderColor: statusStyle.border,
+                                  boxShadow: statusStyle.shadow,
+                                }}
+                              >
+                                {item.status}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className={`flex items-center gap-2 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
+                                <Calendar className="w-4 h-4" />
+                                <span>{formatDisplayDate(item.createdAt)}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>{item.sourcesFound}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <button className="text-[#3B82F6] hover:text-[#2563EB] flex items-center gap-1 text-sm">
+                                View
+                                <ExternalLink className="w-4 h-4" />
+                              </button>
+                            </td>
                           </>
                         );
                       })()}
@@ -409,7 +425,6 @@ export function History() {
             )}
           </div>
 
-          {/* Pagination */}
           {filteredData.length > 0 && (
             <div className="mt-6 flex items-center justify-between">
               <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
@@ -444,7 +459,6 @@ export function History() {
             </div>
           )}
 
-          {/* Dataset Panel */}
           <div className="mt-8 bg-gradient-to-br from-[#3B82F6]/5 to-[#22D3EE]/5 border border-[#3B82F6]/20 rounded-2xl p-8">
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 bg-gradient-to-br from-[#3B82F6] to-[#22D3EE] rounded-xl flex items-center justify-center flex-shrink-0">
@@ -453,26 +467,26 @@ export function History() {
               <div className="flex-1">
                 <h3 className={`text-lg mb-2 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Dataset Information</h3>
                 <p className={`mb-4 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
-                  Misinformation pattern analysis using <strong className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>1,700 LinkedIn posts</strong>
+                  Misinformation pattern analysis using <strong className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>live verification records from database</strong>
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className={`rounded-xl p-4 transition-all duration-300 hover:-translate-y-0.5 ${
                     isDarkMode ? 'bg-[#1E293B] hover:shadow-lg hover:shadow-[#3B82F6]/10' : 'bg-white hover:shadow-md'
                   }`}>
-                    <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Total Posts Analyzed</p>
-                    <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>1,700</p>
+                    <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Total Verifications</p>
+                    <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{historyData.length}</p>
                   </div>
                   <div className={`rounded-xl p-4 transition-all duration-300 hover:-translate-y-0.5 ${
                     isDarkMode ? 'bg-[#1E293B] hover:shadow-lg hover:shadow-[#EF4444]/10' : 'bg-white hover:shadow-md'
                   }`}>
                     <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Misinformation Detected</p>
-                    <p className="text-2xl text-[#EF4444]">342</p>
+                    <p className="text-2xl text-[#EF4444]">{falseCount}</p>
                   </div>
                   <div className={`rounded-xl p-4 transition-all duration-300 hover:-translate-y-0.5 ${
                     isDarkMode ? 'bg-[#1E293B] hover:shadow-lg hover:shadow-[#22C55E]/10' : 'bg-white hover:shadow-md'
                   }`}>
                     <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Accuracy Rate</p>
-                    <p className="text-2xl text-[#22C55E]">94.7%</p>
+                    <p className="text-2xl text-[#22C55E]">{accuracyRate}</p>
                   </div>
                 </div>
               </div>

@@ -1,11 +1,14 @@
 from typing import Any
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.services.claims_service import (
     check_verification_history,
+    get_dashboard_summary,
     get_claim_history,
+    get_recent_verifications,
     insert_claim,
     insert_verification_history,
 )
@@ -195,6 +198,36 @@ def verify_claim_final(payload: FinalVerifyRequest) -> dict[str, Any]:
                 response["propagation_warning"] = str(exc)
 
         return response
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/dashboard/summary")
+def dashboard_summary(limit: int = 500) -> dict[str, Any]:
+    try:
+        return get_dashboard_summary(limit=limit)
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/history/verifications")
+def history_verifications(limit: int = 200) -> dict[str, Any]:
+    try:
+        items = get_recent_verifications(limit=limit)
+        return {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "refresh_interval_seconds": 30,
+            "total": len(items),
+            "items": items,
+        }
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail=str(exc)) from exc
     except RuntimeError as exc:

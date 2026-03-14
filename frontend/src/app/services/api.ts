@@ -77,6 +77,61 @@ export interface TrendingNewsResponse {
   articles: TrendingNewsArticle[];
 }
 
+export interface DashboardTotals {
+  total_verifications: number;
+  true_claims: number;
+  false_claims: number;
+  uncertain_claims: number;
+}
+
+export interface DashboardChanges {
+  total_verifications: string;
+  true_claims: string;
+  false_claims: string;
+  uncertain_claims: string;
+}
+
+export interface DashboardRecentVerification {
+  id: string;
+  claim: string;
+  score: number;
+  status: string;
+  created_at: string;
+  sources: number;
+}
+
+export interface DashboardTrendingTopic {
+  topic: string;
+  count: number;
+  trend: "up" | "down";
+}
+
+export interface DashboardSummaryResponse {
+  generated_at: string;
+  refresh_interval_seconds: number;
+  totals: DashboardTotals;
+  changes: DashboardChanges;
+  recent_verifications: DashboardRecentVerification[];
+  trending_topics: DashboardTrendingTopic[];
+}
+
+export interface HistoryVerificationItem {
+  id: string;
+  claim_text: string;
+  verification_result: string;
+  verdict: string;
+  credibility_score: number;
+  sources_count: number;
+  created_at: string;
+}
+
+export interface HistoryVerificationsResponse {
+  generated_at: string;
+  refresh_interval_seconds: number;
+  total: number;
+  items: HistoryVerificationItem[];
+}
+
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string> }).env;
 const API_BASE_URL = (viteEnv?.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 
@@ -153,4 +208,18 @@ export function getTrendingNews(input?: {
 
   const suffix = params.toString() ? `?${params.toString()}` : "";
   return requestJson<TrendingNewsResponse>(`/analysis/trending-news${suffix}`);
+}
+
+export function getDashboardSummary(input?: { limit?: number }): Promise<DashboardSummaryResponse> {
+  const params = new URLSearchParams();
+  if (typeof input?.limit === "number") params.set("limit", String(input.limit));
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return requestJson<DashboardSummaryResponse>(`/dashboard/summary${suffix}`);
+}
+
+export function getHistoryVerifications(input?: { limit?: number }): Promise<HistoryVerificationsResponse> {
+  const params = new URLSearchParams();
+  if (typeof input?.limit === "number") params.set("limit", String(input.limit));
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return requestJson<HistoryVerificationsResponse>(`/history/verifications${suffix}`);
 }
