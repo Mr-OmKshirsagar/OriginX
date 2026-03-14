@@ -1,0 +1,102 @@
+import { Link, useLocation } from 'react-router';
+import { useMemo } from 'react';
+import { LayoutDashboard, Search, History, Settings, Sparkles, Moon, Sun, Newspaper, Link2 } from 'lucide-react';
+import { useDarkMode } from './DarkModeContext';
+
+export function Sidebar() {
+  const location = useLocation();
+  const { isDarkMode, toggleDarkMode } = useDarkMode();
+  
+  const navItems = useMemo(() => [
+    { id: 'nav-dashboard', icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+    { id: 'nav-trending', icon: Newspaper, label: 'Trending News', path: '/trending' },
+    { id: 'nav-verify', icon: Search, label: 'Verify Claim', path: '/verify' },
+    { id: 'nav-history', icon: History, label: 'Verification History', path: '/history' },
+    { id: 'nav-url-investigation', icon: Link2, label: 'URL Investigation', path: '/url-investigation' },
+    { id: 'nav-settings', icon: Settings, label: 'Settings', path: '/settings' },
+  ], []);
+  
+  return (
+    <div className={`h-screen w-64 border-r fixed left-0 top-0 flex flex-col transition-all duration-300 ${
+      isDarkMode ? 'bg-[#111827] border-[#1F2937]' : 'bg-white border-[#E2E8F0]'
+    }`}>
+      <div className={`p-6 border-b transition-all duration-300 ${isDarkMode ? 'border-[#1F2937]' : 'border-[#E2E8F0]'}`}>
+        <Link to="/" className="flex items-center gap-2 group">
+          <div className="w-8 h-8 bg-gradient-to-br from-[#3B82F6] to-[#22D3EE] rounded-lg flex items-center justify-center shadow-lg shadow-[#3B82F6]/20 group-hover:shadow-[#3B82F6]/40 transition-all">
+            <Sparkles className="w-5 h-5 text-white" />
+          </div>
+          <span className={`text-xl font-semibold transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>OriginTrace</span>
+        </Link>
+        <p className={`text-xs mt-1 transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#94A3B8]'}`}>Trace the Origin of Truth</p>
+      </div>
+      
+      <nav className="flex-1 p-4">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = location.pathname === item.path;
+          
+          return (
+            <Link
+              key={item.id}
+              to={item.path}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg mb-2 transition-all duration-200 group relative overflow-hidden ${
+                isActive
+                  ? isDarkMode 
+                    ? 'bg-gradient-to-r from-[#3B82F6]/20 to-[#22D3EE]/20 text-[#22D3EE] shadow-lg shadow-[#3B82F6]/10' 
+                    : 'bg-[#F1F5F9] text-[#3B82F6]'
+                  : isDarkMode 
+                    ? 'text-[#9CA3AF] hover:bg-[#1F2937] hover:text-[#F9FAFB]' 
+                    : 'text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#0F172A]'
+              }`}
+            >
+              {isActive && isDarkMode && (
+                <div className="absolute inset-0 bg-gradient-to-r from-[#3B82F6]/10 to-[#22D3EE]/10 blur-xl"></div>
+              )}
+              <Icon className="w-5 h-5 relative z-10" />
+              <span className="relative z-10 flex items-center gap-2 justify-between w-full">
+                <span>{item.label}</span>
+                {item.id === 'nav-trending' && <span className="w-2.5 h-2.5 rounded-full bg-[#22C55E] animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.7)]" />}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className={`p-4 border-t transition-all duration-300 ${isDarkMode ? 'border-[#1F2937]' : 'border-[#E2E8F0]'}`}>
+        {/* Dark Mode Toggle */}
+        <button
+          onClick={toggleDarkMode}
+          className={`w-full flex items-center justify-between px-4 py-3 rounded-lg mb-3 transition-all duration-200 group ${
+            isDarkMode ? 'bg-[#1F2937] text-[#F9FAFB] hover:bg-[#374151]' : 'bg-[#F8FAFC] text-[#0F172A] hover:bg-[#F1F5F9]'
+          }`}
+        >
+          <span className="flex items-center gap-3">
+            {isDarkMode ? (
+              <Moon className="w-5 h-5 text-[#22D3EE]" />
+            ) : (
+              <Sun className="w-5 h-5 text-[#FBBF24]" />
+            )}
+            <span className="text-sm">{isDarkMode ? 'Dark Mode' : 'Light Mode'}</span>
+          </span>
+          <div className={`w-10 h-6 rounded-full p-1 transition-all duration-300 ${
+            isDarkMode ? 'bg-gradient-to-r from-[#3B82F6] to-[#22D3EE]' : 'bg-[#CBD5E1]'
+          }`}>
+            <div className={`w-4 h-4 rounded-full bg-white transition-transform duration-300 ${
+              isDarkMode ? 'translate-x-4 shadow-lg shadow-[#3B82F6]/50' : 'translate-x-0'
+            }`}></div>
+          </div>
+        </button>
+
+        <div className={`rounded-lg p-4 border transition-all duration-300 ${  
+          isDarkMode 
+            ? 'bg-gradient-to-br from-[#3B82F6]/10 to-[#22D3EE]/10 border-[#3B82F6]/20 shadow-lg shadow-[#3B82F6]/5' 
+            : 'bg-gradient-to-br from-[#3B82F6]/10 to-[#22D3EE]/10 border-[#3B82F6]/20'
+        }`}>
+          <p className="text-xs text-[#22D3EE] mb-1 font-medium">Total Verifications</p>
+          <p className={`text-2xl font-bold transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>1,284</p>
+          <p className={`text-xs mt-1 transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#94A3B8]'}`}>Completed this month</p>
+        </div>
+      </div>
+    </div>
+  );
+}
