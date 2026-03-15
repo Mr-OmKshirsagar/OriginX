@@ -1,4 +1,4 @@
-Design a modern AI web application interface for a misinformation verification platform called OriginTrace.
+Design a modern AI web application interface for a misinformation verification platform called OriginX.
 
 The platform allows users to input a news claim and verifies whether it is real or fake by analyzing multiple trusted news sources, checking website credibility, and calculating similarity scores using AI.
 
@@ -37,12 +37,12 @@ Use Inter or Poppins font.
 
 Page 1 — Landing Page
 
-Create a landing page for OriginTrace.
+Create a landing page for OriginX.
 
 Hero Section:
 
 Title:
-OriginTrace
+OriginX
 
 Tagline:
 "Trace the Origin of Truth"

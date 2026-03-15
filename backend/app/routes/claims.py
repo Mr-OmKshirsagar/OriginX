@@ -8,6 +8,7 @@ from app.services.claims_service import (
     check_verification_history,
     get_dashboard_summary,
     get_claim_history,
+    get_monthly_verification_count,
     get_recent_verifications,
     insert_claim,
     insert_verification_history,
@@ -226,6 +227,16 @@ def dashboard_summary(limit: int = Query(default=500, ge=1, le=2000)) -> dict[st
         raise HTTPException(status_code=504, detail=str(exc)) from exc
     except RuntimeError as exc:
         _raise_operation_failed()
+    except Exception as exc:
+        _raise_internal_server_error()
+
+
+@router.get("/dashboard/monthly-count")
+def dashboard_monthly_count() -> dict[str, Any]:
+    try:
+        return get_monthly_verification_count()
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
     except Exception as exc:
         _raise_internal_server_error()
 

@@ -1,11 +1,31 @@
 import { Link, useLocation } from 'react-router';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { LayoutDashboard, Search, History, Settings, Sparkles, Moon, Sun, Newspaper, Link2 } from 'lucide-react';
 import { useDarkMode } from './DarkModeContext';
+import { getMonthlyVerificationCount } from '../services/api';
 
 export function Sidebar() {
   const location = useLocation();
   const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const [monthlyCount, setMonthlyCount] = useState<number | null>(null);
+  const [monthLabel, setMonthLabel] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchCount = () => {
+      getMonthlyVerificationCount()
+        .then((data) => {
+          if (!cancelled) {
+            setMonthlyCount(data.count);
+            setMonthLabel(data.month);
+          }
+        })
+        .catch(() => {/* keep last value on error */});
+    };
+    fetchCount();
+    const id = window.setInterval(fetchCount, 30_000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, []);
   
   const navItems = useMemo(() => [
     { id: 'nav-dashboard', icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
@@ -25,7 +45,7 @@ export function Sidebar() {
           <div className="w-8 h-8 bg-gradient-to-br from-[#3B82F6] to-[#22D3EE] rounded-lg flex items-center justify-center shadow-lg shadow-[#3B82F6]/20 group-hover:shadow-[#3B82F6]/40 transition-all">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
-          <span className={`text-xl font-semibold transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>OriginTrace</span>
+          <span className={`text-xl font-semibold transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>OriginX</span>
         </Link>
         <p className={`text-xs mt-1 transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#94A3B8]'}`}>Trace the Origin of Truth</p>
       </div>
@@ -93,8 +113,12 @@ export function Sidebar() {
             : 'bg-gradient-to-br from-[#3B82F6]/10 to-[#22D3EE]/10 border-[#3B82F6]/20'
         }`}>
           <p className="text-xs text-[#22D3EE] mb-1 font-medium">Total Verifications</p>
-          <p className={`text-2xl font-bold transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>1,284</p>
-          <p className={`text-xs mt-1 transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#94A3B8]'}`}>Completed this month</p>
+          <p className={`text-2xl font-bold transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>
+            {monthlyCount !== null ? monthlyCount.toLocaleString() : '—'}
+          </p>
+          <p className={`text-xs mt-1 transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#94A3B8]'}`}>
+            {monthLabel ? `Completed in ${monthLabel}` : 'Completed this month'}
+          </p>
         </div>
       </div>
     </div>

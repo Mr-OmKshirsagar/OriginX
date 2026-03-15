@@ -611,3 +611,40 @@ def get_recent_verifications(limit: int = 200) -> list[dict[str, Any]]:
         )
 
     return shaped
+
+
+def get_monthly_verification_count() -> dict[str, Any]:
+    """Return the number of verifications recorded in the current calendar month."""
+    now = datetime.now(timezone.utc)
+    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    month_label = now.strftime("%B %Y")
+
+    if settings.SUPABASE_USE_DIRECT_DB and settings.SUPABASE_DIRECT_DB_URL:
+        try:
+            def _query_direct() -> int:
+                with psycopg.connect(settings.SUPABASE_DIRECT_DB_URL, connect_timeout=8) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT COUNT(*) FROM public.verification_history WHERE created_at >= %s",
+                            (month_start,),
+                        )
+                        row = cur.fetchone()
+                return int(row[0]) if row else 0
+
+            count = _run_with_timeout(_query_direct, timeout_seconds=10)
+            return {"month": month_label, "count": count}
+        except Exception:
+            pass
+
+    # Supabase REST fallback
+    response = _run_with_timeout(
+        lambda: (
+            supabase.table("verification_history")
+            .select("id", count="exact")
+            .gte("created_at", month_start.isoformat())
+            .execute()
+        ),
+        timeout_seconds=10,
+    )
+    count = response.count if (hasattr(response, "count") and response.count is not None) else len(response.data or [])
+    return {"month": month_label, "count": int(count)}

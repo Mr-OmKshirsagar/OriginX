@@ -223,3 +223,12 @@ export function getHistoryVerifications(input?: { limit?: number }): Promise<His
   const suffix = params.toString() ? `?${params.toString()}` : "";
   return requestJson<HistoryVerificationsResponse>(`/history/verifications${suffix}`);
 }
+
+export interface MonthlyCountResponse {
+  month: string;
+  count: number;
+}
+
+export function getMonthlyVerificationCount(): Promise<MonthlyCountResponse> {
+  return requestJson<MonthlyCountResponse>("/dashboard/monthly-count");
+}

@@ -129,11 +129,11 @@ async function detectCountryFromBrowserLocation(): Promise<string> {
 export function TrendingNews() {
   const { isDarkMode } = useDarkMode();
   const [currentTime, setCurrentTime] = useState(() =>
-    new Intl.DateTimeFormat('en-GB', {
+    new Intl.DateTimeFormat('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
-      hour12: false,
+      hour12: true,
     }).format(new Date())
   );
   const [newsData, setNewsData] = useState<TrendingNewsResponse | null>(null);
@@ -146,11 +146,11 @@ export function TrendingNews() {
   const detectedLocalCountryName = formatCountryName(detectedLocalCountry);
 
   useEffect(() => {
-    const formatter = new Intl.DateTimeFormat('en-GB', {
+    const formatter = new Intl.DateTimeFormat('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
-      hour12: false,
+      hour12: true,
     });
 
     const intervalId = window.setInterval(() => {

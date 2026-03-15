@@ -228,7 +228,7 @@ export function LandingPage() {
             <div className="w-8 h-8 bg-gradient-to-br from-[#3B82F6] to-[#22D3EE] rounded-lg flex items-center justify-center shadow-lg shadow-[#3B82F6]/30">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
-            <span className={`text-xl font-semibold transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>OriginTrace</span>
+            <span className={`text-xl font-semibold transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>OriginX</span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -290,7 +290,7 @@ export function LandingPage() {
             <p className={`text-xl max-w-3xl mx-auto mb-12 ${
               isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'
             }`}>
-              OriginTrace analyzes global news sources, detects fake websites, and provides credibility scores for viral claims.
+              OriginX analyzes global news sources, detects fake websites, and provides credibility scores for viral claims.
             </p>
 
             {/* Search Bar */}
@@ -495,7 +495,7 @@ export function LandingPage() {
                 <div className="w-8 h-8 bg-gradient-to-br from-[#3B82F6] to-[#22D3EE] rounded-lg flex items-center justify-center">
                   <Sparkles className="w-5 h-5 text-white" />
                 </div>
-                <span className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>OriginTrace</span>
+                  <span className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>OriginX</span>
               </div>
               <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Trace the Origin of Truth</p>
             </div>
@@ -530,7 +530,7 @@ export function LandingPage() {
           <div className={`border-t pt-8 flex flex-col md:flex-row items-center justify-between gap-4 ${
             isDarkMode ? 'border-[#1E293B]' : 'border-[#E2E8F0]'
           }`}>
-            <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>© 2026 OriginTrace. All rights reserved.</p>
+            <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>© 2026 OriginX. All rights reserved.</p>
 
             <div className="flex items-center gap-4">
               <a href="#" className={`hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
@@ -575,7 +575,7 @@ export function LandingPage() {
                   </div>
                   <span className={`text-xl font-semibold ${
                     isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'
-                  }`}>OriginTrace</span>
+                  }`}>OriginX</span>
                 </div>
                 <p className={`text-xs mt-1 ${
                   isDarkMode ? 'text-[#9CA3AF]' : 'text-[#94A3B8]'

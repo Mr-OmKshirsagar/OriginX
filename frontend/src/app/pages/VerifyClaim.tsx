@@ -536,7 +536,7 @@ export function VerifyClaim() {
                     <div className="max-w-2xl">
                       <div className="inline-flex items-center gap-2 rounded-full border border-[#22D3EE]/25 bg-[#22D3EE]/10 px-4 py-1.5 mb-4">
                         <Sparkles className="w-4 h-4 text-[#22D3EE]" />
-                        <span className="text-sm text-[#22D3EE]">TruthSeeker AI Verification Dashboard</span>
+                        <span className="text-sm text-[#22D3EE]">OriginX AI Verification Dashboard</span>
                       </div>
                       <h2 className={`text-2xl mb-3 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Verification Result</h2>
                       <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>
@@ -661,7 +661,7 @@ export function VerifyClaim() {
                   <div className="flex-1 space-y-5">
                     <div>
                       <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>AI Reasoning Panel</p>
-                      <h3 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Why TruthSeeker considers this claim credible</h3>
+                      <h3 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Why OriginX considers this claim credible</h3>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
