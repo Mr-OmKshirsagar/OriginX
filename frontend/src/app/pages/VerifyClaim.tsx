@@ -33,14 +33,7 @@ import { NetworkBackground } from '../components/NetworkBackground';
 import { useDarkMode } from '../components/DarkModeContext';
 import { useLanguage } from '../components/LanguageContext';
 import { speechSynthesisLocale } from '../i18n/config';
-import { analyzeRedditPropagation, verifyClaim, type RedditPropagationResponse, type VerifyClaimResponse } from '../services/api';
-import {
-  analyzeRedditPropagation,
-  extractTextFromImage,
-  verifyClaim,
-  type RedditPropagationResponse,
-  type VerifyClaimResponse
-} from '../services/api';
+import { analyzeRedditPropagation, extractTextFromImage, verifyClaim, type RedditPropagationResponse, type VerifyClaimResponse } from '../services/api';
 
 interface Article {
   id: number;
@@ -852,8 +845,7 @@ export function VerifyClaim() {
     setRedditError(null);
 
     try {
-      const response = await verifyClaim(claim.trim(), language);
-      const response = await verifyClaim(normalizedClaim);
+      const response = await verifyClaim(normalizedClaim, language);
       setVerificationData(response);
       setAnalyzedAt(new Date());
       setLastAnalyzedClaim(normalizedClaim);
