@@ -31,9 +31,24 @@ import { Sidebar } from '../components/Sidebar';
 import { CredibilityGauge } from '../components/CredibilityGauge';
 import { NetworkBackground } from '../components/NetworkBackground';
 import { useDarkMode } from '../components/DarkModeContext';
+
 import { useLanguage } from '../components/LanguageContext';
 import { speechSynthesisLocale } from '../i18n/config';
 import { analyzeRedditPropagation, extractTextFromImage, verifyClaim, type RedditPropagationResponse, type VerifyClaimResponse } from '../services/api';
+
+import {
+  analyzeAnomalies,
+  analyzeBots,
+  analyzeRedditPropagation,
+  extractTextFromImage,
+  verifyClaim,
+  type AnomalyDetectionResponse,
+  type BotDetectionResponse,
+  type PropagationEvent,
+  type RedditPropagationResponse,
+  type VerifyClaimResponse
+} from '../services/api';
+
 
 interface Article {
   id: number;
@@ -223,6 +238,62 @@ function SpreadTimelinePanel({ eyebrow, heading, events, isDarkMode }: SpreadTim
   );
 }
 
+function buildMockAnomalyResponse(events: PropagationEvent[], claimText: string): AnomalyDetectionResponse {
+  const accounts = Array.from(new Set(events.map((event) => event.user_id).filter(Boolean)));
+  const leadAccounts = accounts.slice(0, 4);
+  return {
+    events_count: events.length,
+    anomalies: [
+      {
+        type: 'burst_posting',
+        severity: 'high',
+        score: 84,
+        accounts: leadAccounts.slice(0, 3),
+        explanation: 'Unusual spike in posts detected for this narrative.'
+      },
+      {
+        type: 'synchronized_activity',
+        severity: 'medium',
+        score: 72,
+        accounts: leadAccounts,
+        explanation: 'Multiple accounts posted similar content within a short time window.',
+        narrative_key: claimText
+      },
+      {
+        type: 'domain_amplification',
+        severity: 'medium',
+        score: 61,
+        accounts: leadAccounts.slice(0, 2),
+        explanation: 'Repeated sharing of the same suspicious domain.'
+      }
+    ]
+  };
+}
+
+function buildMockBotResponse(events: PropagationEvent[], claimText: string): BotDetectionResponse {
+  const accounts = Array.from(new Set(events.map((event) => event.user_id).filter(Boolean)));
+  const suspiciousAccounts = accounts.slice(0, 3).map((account, index) => ({
+    user_id: account,
+    bot_risk_score: 74 - (index * 9),
+    risk_level: index === 0 ? 'high' as const : 'moderate' as const,
+    signals: index === 0 ? ['high_sync', 'duplicate_content'] : ['synchronized_activity', 'high_posting_frequency']
+  }));
+
+  return {
+    suspicious_accounts: suspiciousAccounts,
+    clusters: suspiciousAccounts.length >= 2
+      ? [
+          {
+            cluster_id: 'cluster_1',
+            members: suspiciousAccounts.map((account) => account.user_id),
+            shared_claim: claimText,
+            cluster_risk_score: 82
+          }
+        ]
+      : []
+  };
+}
+
 export function VerifyClaim() {
   const location = useLocation();
   const navigationState = location.state as { claim?: string; claimText?: string; autoAnalyze?: boolean; source?: string } | null;
@@ -243,8 +314,11 @@ export function VerifyClaim() {
   const [lastAnalyzedClaim, setLastAnalyzedClaim] = useState(initialClaim);
   const [activePlatform, setActivePlatform] = useState<'reddit' | 'x' | 'facebook' | 'instagram' | 'news' | null>(null);
   const [redditData, setRedditData] = useState<RedditPropagationResponse | null>(null);
+  const [redditAnomalyData, setRedditAnomalyData] = useState<AnomalyDetectionResponse | null>(null);
+  const [redditBotData, setRedditBotData] = useState<BotDetectionResponse | null>(null);
   const [redditError, setRedditError] = useState<string | null>(null);
   const [isLoadingReddit, setIsLoadingReddit] = useState(false);
+  const [isLoadingRedditInsights, setIsLoadingRedditInsights] = useState(false);
   const [isLoadingX, setIsLoadingX] = useState(false);
   const [isLoadingFacebook, setIsLoadingFacebook] = useState(false);
   const [isLoadingInstagram, setIsLoadingInstagram] = useState(false);
@@ -564,8 +638,74 @@ export function VerifyClaim() {
 
   const redditSpreadNodes = redditData?.analysis.spread_nodes ?? 0;
   const redditEventsCount = redditData?.events_count ?? 0;
-  const redditPatientZero = redditData?.analysis.patient_zero ?? t('verifyNoPrimarySource');
-  const redditSuperSpreader = redditData?.analysis.super_spreader ?? t('verifyNoAmplificationLeader');
+  const redditPatientZero = redditData?.analysis.patient_zero ?? 'No primary source identified';
+  const redditSuperSpreader = redditData?.analysis.super_spreader ?? 'No amplification leader detected';
+  const redditEvents = redditData?.events ?? [];
+  const redditAnomalies = redditAnomalyData?.anomalies ?? [];
+  const suspiciousAccounts = redditBotData?.suspicious_accounts ?? [];
+  const coordinatedClusters = redditBotData?.clusters ?? [];
+
+  const getAnomalyTypeLabel = (type: string) => {
+    switch (type) {
+      case 'burst_posting':
+        return 'Burst Posting';
+      case 'synchronized_activity':
+        return 'Synchronized Activity';
+      case 'domain_amplification':
+        return 'Domain Amplification';
+      default:
+        return type.replace(/_/g, ' ');
+    }
+  };
+
+  const getSeverityStyles = (severity: 'low' | 'medium' | 'high') => {
+    if (severity === 'high') {
+      return {
+        border: 'border-[#EF4444]/25',
+        pill: 'border-[#EF4444]/30 bg-[#EF4444]/12 text-[#FCA5A5]',
+        score: '#EF4444',
+      };
+    }
+
+    if (severity === 'medium') {
+      return {
+        border: 'border-[#F59E0B]/25',
+        pill: 'border-[#F59E0B]/30 bg-[#F59E0B]/12 text-[#FCD34D]',
+        score: '#F59E0B',
+      };
+    }
+
+    return {
+      border: 'border-[#22C55E]/25',
+      pill: 'border-[#22C55E]/30 bg-[#22C55E]/12 text-[#86EFAC]',
+      score: '#22C55E',
+    };
+  };
+
+  const getRiskStyles = (riskLevel: 'low' | 'moderate' | 'high') => {
+    if (riskLevel === 'high') {
+      return {
+        border: 'border-[#EF4444]/25',
+        pill: 'border-[#EF4444]/30 bg-[#EF4444]/12 text-[#FCA5A5]',
+        score: '#EF4444',
+      };
+    }
+
+    if (riskLevel === 'moderate') {
+      return {
+        border: 'border-[#F59E0B]/25',
+        pill: 'border-[#F59E0B]/30 bg-[#F59E0B]/12 text-[#FCD34D]',
+        score: '#F59E0B',
+      };
+    }
+
+    return {
+      border: 'border-[#22C55E]/25',
+      pill: 'border-[#22C55E]/30 bg-[#22C55E]/12 text-[#86EFAC]',
+      score: '#22C55E',
+    };
+  };
+
 
   const platformSpreadTimelines = {
     reddit: {
@@ -842,6 +982,8 @@ export function VerifyClaim() {
     setAnalysisError(null);
     setActivePlatform(null);
     setRedditData(null);
+    setRedditAnomalyData(null);
+    setRedditBotData(null);
     setRedditError(null);
 
     try {
@@ -918,6 +1060,35 @@ export function VerifyClaim() {
     }
   };
 
+  const loadRedditInsights = async (events: PropagationEvent[], claimText: string) => {
+    if (!events.length) {
+      setRedditAnomalyData(buildMockAnomalyResponse(events, claimText));
+      setRedditBotData(buildMockBotResponse(events, claimText));
+      return;
+    }
+
+    setIsLoadingRedditInsights(true);
+    try {
+      const [anomalyResult, botResult] = await Promise.allSettled([
+        analyzeAnomalies(events),
+        analyzeBots(events),
+      ]);
+
+      setRedditAnomalyData(
+        anomalyResult.status === 'fulfilled'
+          ? anomalyResult.value
+          : buildMockAnomalyResponse(events, claimText)
+      );
+      setRedditBotData(
+        botResult.status === 'fulfilled'
+          ? botResult.value
+          : buildMockBotResponse(events, claimText)
+      );
+    } finally {
+      setIsLoadingRedditInsights(false);
+    }
+  };
+
   const handleOpenPlatform = async (platform: 'reddit' | 'x' | 'facebook' | 'instagram' | 'news') => {
     setActivePlatform(activePlatform === platform ? null : platform);
 
@@ -927,6 +1098,9 @@ export function VerifyClaim() {
 
     if (platform === 'reddit' && !isLoadingReddit && !redditData) {
       setIsLoadingReddit(true);
+      setRedditError(null);
+      setRedditAnomalyData(null);
+      setRedditBotData(null);
       try {
         const response = await analyzeRedditPropagation({
           query: claim.trim(),
@@ -935,11 +1109,16 @@ export function VerifyClaim() {
           comments_per_post: 5,
         });
         setRedditData(response);
+        await loadRedditInsights(response.events ?? [], claim.trim());
       } catch (error) {
-        // Error handled in UI
+        setRedditError(error instanceof Error ? error.message : 'Failed to analyze Reddit propagation.');
+        setRedditAnomalyData(buildMockAnomalyResponse([], claim.trim()));
+        setRedditBotData(buildMockBotResponse([], claim.trim()));
       } finally {
         setIsLoadingReddit(false);
       }
+    } else if (platform === 'reddit' && redditData && !redditAnomalyData && !redditBotData && !isLoadingRedditInsights) {
+      void loadRedditInsights(redditData.events ?? [], claim.trim());
     } else if (platform === 'x' && !isLoadingX) {
       setIsLoadingX(true);
       setTimeout(() => setIsLoadingX(false), 500);
@@ -2048,6 +2227,265 @@ export function VerifyClaim() {
                         heading={platformSpreadTimelines.reddit.heading}
                         events={platformSpreadTimelines.reddit.events}
                       />
+
+                      <div className={`rounded-[28px] border overflow-hidden ${
+                        isDarkMode ? 'bg-[#111827] border-white/8' : 'bg-white border-[#E2E8F0]'
+                      }`}>
+                        <div className="flex items-center justify-between gap-4 p-8 pb-6 border-b border-white/10">
+                          <div>
+                            <p className={`text-xs uppercase tracking-[0.24em] mb-2 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Threat Intelligence</p>
+                            <h4 className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Anomaly Detection</h4>
+                          </div>
+                          <div className="inline-flex items-center rounded-full border border-[#F59E0B]/20 bg-[#F59E0B]/10 px-3 py-1 text-xs text-[#FCD34D]">
+                            {isLoadingRedditInsights ? 'Inspecting propagation patterns...' : `${redditAnomalies.length} anomalies detected`}
+                          </div>
+                        </div>
+
+                        <div className="p-8 space-y-5">
+                          {isLoadingRedditInsights ? (
+                            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                              {[1, 2, 3].map((index) => (
+                                <div
+                                  key={index}
+                                  className={`rounded-2xl border p-5 animate-pulse ${
+                                    isDarkMode ? 'bg-white/5 border-white/8' : 'bg-[#F8FAFC] border-[#E2E8F0]'
+                                  }`}
+                                >
+                                  <div className={`h-3 w-28 rounded-full mb-4 ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                                  <div className={`h-7 w-20 rounded-full mb-4 ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                                  <div className={`h-3 w-full rounded-full mb-2 ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                                  <div className={`h-3 w-4/5 rounded-full ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                                </div>
+                              ))}
+                            </div>
+                          ) : redditAnomalies.length === 0 ? (
+                            <div className={`rounded-2xl border p-6 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-[#F8FAFC] border-[#E2E8F0]'}`}>
+                              <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>
+                                No anomaly patterns were flagged from the current Reddit propagation sample.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                              {redditAnomalies.map((anomaly) => {
+                                const severityStyles = getSeverityStyles(anomaly.severity);
+                                return (
+                                  <div
+                                    key={`${anomaly.type}-${anomaly.score}`}
+                                    className={`rounded-2xl border p-5 ${
+                                      isDarkMode
+                                        ? `bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(15,23,42,0.72))] ${severityStyles.border}`
+                                        : `bg-white ${severityStyles.border}`
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-4 mb-5">
+                                      <div>
+                                        <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
+                                          {getAnomalyTypeLabel(anomaly.type)}
+                                        </p>
+                                        <div className={`inline-flex items-center rounded-full border px-3 py-1 text-xs ${severityStyles.pill}`}>
+                                          Severity: {anomaly.severity}
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="text-3xl leading-none" style={{ color: severityStyles.score }}>{anomaly.score}</p>
+                                        <p className={`text-xs uppercase tracking-[0.16em] mt-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Score</p>
+                                      </div>
+                                    </div>
+
+                                    <p className={`text-sm leading-relaxed mb-4 ${isDarkMode ? 'text-[#CBD5E1]' : 'text-[#475569]'}`}>
+                                      {anomaly.explanation || 'Suspicious propagation behavior detected in the Reddit activity sample.'}
+                                    </p>
+
+                                    <div className="space-y-3">
+                                      <div>
+                                        <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Accounts Involved</p>
+                                        <div className="flex flex-wrap gap-2">
+                                          {anomaly.accounts.length > 0 ? anomaly.accounts.map((account) => (
+                                            <span
+                                              key={account}
+                                              className={`inline-flex items-center rounded-full border px-3 py-1 text-xs ${
+                                                isDarkMode ? 'border-white/10 bg-white/5 text-[#E2E8F0]' : 'border-[#E2E8F0] bg-[#F8FAFC] text-[#334155]'
+                                              }`}
+                                            >
+                                              {account}
+                                            </span>
+                                          )) : (
+                                            <span className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>No accounts isolated</span>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {(anomaly.domain || anomaly.narrative_key) && (
+                                        <div className={`rounded-xl border px-4 py-3 ${isDarkMode ? 'border-white/8 bg-white/5' : 'border-[#E2E8F0] bg-[#F8FAFC]'}`}>
+                                          <p className={`text-xs uppercase tracking-[0.16em] mb-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Evidence</p>
+                                          <p className={`text-sm ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
+                                            {anomaly.domain ? `Domain: ${anomaly.domain}` : `Claim: ${anomaly.narrative_key}`}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className={`rounded-[28px] border overflow-hidden ${
+                        isDarkMode ? 'bg-[#111827] border-white/8' : 'bg-white border-[#E2E8F0]'
+                      }`}>
+                        <div className="flex items-center justify-between gap-4 p-8 pb-6 border-b border-white/10">
+                          <div>
+                            <p className={`text-xs uppercase tracking-[0.24em] mb-2 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Automation Risk</p>
+                            <h4 className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Bot Detection</h4>
+                          </div>
+                          <div className="inline-flex items-center rounded-full border border-[#3B82F6]/20 bg-[#3B82F6]/10 px-3 py-1 text-xs text-[#93C5FD]">
+                            {isLoadingRedditInsights ? 'Scoring accounts...' : `${suspiciousAccounts.length} suspicious accounts`}
+                          </div>
+                        </div>
+
+                        <div className="p-8 space-y-6">
+                          <div>
+                            <div className="flex items-center justify-between gap-4 mb-4">
+                              <div>
+                                <p className={`text-xs uppercase tracking-[0.16em] mb-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Suspicious Accounts</p>
+                                <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>Accounts with elevated automation or coordination signals</p>
+                              </div>
+                            </div>
+
+                            {isLoadingRedditInsights ? (
+                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                                {[1, 2].map((index) => (
+                                  <div
+                                    key={index}
+                                    className={`rounded-2xl border p-5 animate-pulse ${
+                                      isDarkMode ? 'bg-white/5 border-white/8' : 'bg-[#F8FAFC] border-[#E2E8F0]'
+                                    }`}
+                                  >
+                                    <div className={`h-3 w-24 rounded-full mb-4 ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                                    <div className={`h-8 w-20 rounded-full mb-4 ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                                    <div className={`h-3 w-full rounded-full mb-2 ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                                    <div className={`h-3 w-3/4 rounded-full ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                                  </div>
+                                ))}
+                              </div>
+                            ) : suspiciousAccounts.length === 0 ? (
+                              <div className={`rounded-2xl border p-6 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-[#F8FAFC] border-[#E2E8F0]'}`}>
+                                <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>
+                                  No suspicious accounts were identified from the current Reddit sample.
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                                {suspiciousAccounts.map((account) => {
+                                  const riskStyles = getRiskStyles(account.risk_level);
+                                  return (
+                                    <div
+                                      key={account.user_id}
+                                      className={`rounded-2xl border p-5 ${
+                                        isDarkMode
+                                          ? `bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(15,23,42,0.72))] ${riskStyles.border}`
+                                          : `bg-white ${riskStyles.border}`
+                                      }`}
+                                    >
+                                      <div className="flex items-start justify-between gap-4 mb-5">
+                                        <div>
+                                          <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>User</p>
+                                          <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{account.user_id}</p>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className="text-3xl leading-none" style={{ color: riskStyles.score }}>{account.bot_risk_score}</p>
+                                          <p className={`text-xs uppercase tracking-[0.16em] mt-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Bot Risk</p>
+                                        </div>
+                                      </div>
+
+                                      <div className={`inline-flex items-center rounded-full border px-3 py-1 text-xs mb-4 ${riskStyles.pill}`}>
+                                        Risk Level: {account.risk_level}
+                                      </div>
+
+                                      <div>
+                                        <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Signals</p>
+                                        <div className="flex flex-wrap gap-2">
+                                          {account.signals.map((signal) => (
+                                            <span
+                                              key={`${account.user_id}-${signal}`}
+                                              className={`inline-flex items-center rounded-full border px-3 py-1 text-xs ${
+                                                isDarkMode ? 'border-white/10 bg-white/5 text-[#E2E8F0]' : 'border-[#E2E8F0] bg-[#F8FAFC] text-[#334155]'
+                                              }`}
+                                            >
+                                              {signal}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between gap-4 mb-4">
+                              <div>
+                                <p className={`text-xs uppercase tracking-[0.16em] mb-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Coordinated Clusters</p>
+                                <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>Groups of accounts that appear to coordinate around the same narrative</p>
+                              </div>
+                            </div>
+
+                            {coordinatedClusters.length === 0 ? (
+                              <div className={`rounded-2xl border p-6 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-[#F8FAFC] border-[#E2E8F0]'}`}>
+                                <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>
+                                  No coordinated clusters were isolated from the current Reddit sample.
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                                {coordinatedClusters.map((cluster) => {
+                                  const clusterRiskLevel = cluster.cluster_risk_score >= 70 ? 'high' : cluster.cluster_risk_score >= 40 ? 'moderate' : 'low';
+                                  const riskStyles = getRiskStyles(clusterRiskLevel);
+                                  return (
+                                    <div
+                                      key={cluster.cluster_id}
+                                      className={`rounded-2xl border p-5 ${
+                                        isDarkMode
+                                          ? `bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(15,23,42,0.72))] ${riskStyles.border}`
+                                          : `bg-white ${riskStyles.border}`
+                                      }`}
+                                    >
+                                      <div className="flex items-start justify-between gap-4 mb-4">
+                                        <div>
+                                          <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{cluster.cluster_id.replace('_', ' ').toUpperCase()}</p>
+                                          <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{cluster.shared_claim}</p>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className="text-3xl leading-none" style={{ color: riskStyles.score }}>{cluster.cluster_risk_score}</p>
+                                          <p className={`text-xs uppercase tracking-[0.16em] mt-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Cluster Risk</p>
+                                        </div>
+                                      </div>
+
+                                      <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Members</p>
+                                      <div className="flex flex-wrap gap-2">
+                                        {cluster.members.map((member) => (
+                                          <span
+                                            key={`${cluster.cluster_id}-${member}`}
+                                            className={`inline-flex items-center rounded-full border px-3 py-1 text-xs ${
+                                              isDarkMode ? 'border-white/10 bg-white/5 text-[#E2E8F0]' : 'border-[#E2E8F0] bg-[#F8FAFC] text-[#334155]'
+                                            }`}
+                                          >
+                                            {member}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}

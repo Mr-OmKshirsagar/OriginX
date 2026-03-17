@@ -53,6 +53,15 @@ export interface RedditEdge {
   weight: number;
 }
 
+export interface PropagationEvent {
+  user_id: string;
+  claim_text: string;
+  timestamp?: string | null;
+  narrative_key?: string | null;
+  url?: string | null;
+  domain?: string | null;
+}
+
 export interface RedditAnalysis {
   patient_zero: string | null;
   spread_nodes: number;
@@ -68,7 +77,42 @@ export interface RedditPropagationResponse {
   source: "reddit";
   query: string;
   events_count: number;
+  events?: PropagationEvent[];
   analysis: RedditAnalysis;
+}
+
+export interface AnomalyFinding {
+  type: string;
+  severity: "low" | "medium" | "high";
+  score: number;
+  accounts: string[];
+  explanation?: string;
+  domain?: string | null;
+  narrative_key?: string | null;
+}
+
+export interface AnomalyDetectionResponse {
+  events_count: number;
+  anomalies: AnomalyFinding[];
+}
+
+export interface SuspiciousAccount {
+  user_id: string;
+  bot_risk_score: number;
+  risk_level: "low" | "moderate" | "high";
+  signals: string[];
+}
+
+export interface CoordinatedCluster {
+  cluster_id: string;
+  members: string[];
+  shared_claim: string;
+  cluster_risk_score: number;
+}
+
+export interface BotDetectionResponse {
+  suspicious_accounts: SuspiciousAccount[];
+  clusters: CoordinatedCluster[];
 }
 
 export interface TrendingNewsArticle {
@@ -219,6 +263,20 @@ export function analyzeRedditPropagation(input: {
   return requestJson<RedditPropagationResponse>("/analysis/reddit-propagation", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export function analyzeAnomalies(events: PropagationEvent[]): Promise<AnomalyDetectionResponse> {
+  return requestJson<AnomalyDetectionResponse>("/analysis/anomaly-detection", {
+    method: "POST",
+    body: JSON.stringify({ events }),
+  });
+}
+
+export function analyzeBots(events: PropagationEvent[]): Promise<BotDetectionResponse> {
+  return requestJson<BotDetectionResponse>("/analysis/bot-detection", {
+    method: "POST",
+    body: JSON.stringify({ events }),
   });
 }
 
