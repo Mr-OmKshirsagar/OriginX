@@ -13,7 +13,7 @@ class Settings:
     SUPABASE_DIRECT_DB_URL: str = os.getenv("SUPABASE_DIRECT_DB_URL", "")
     NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
     GOOGLE_AI_STUDIO_API_KEY: str = os.getenv("GOOGLE_AI_STUDIO_API_KEY", "")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.0-mini")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     VIRUSTOTAL_API_KEY: str = os.getenv("VIRUSTOTAL_API_KEY", "")
     OPENPHISH_FEED_URL: str = os.getenv("OPENPHISH_FEED_URL", "")
     REDDIT_USER_AGENT: str = os.getenv("REDDIT_USER_AGENT", "")

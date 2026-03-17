@@ -23,6 +23,8 @@ def _rules() -> tuple[RateLimitRule, ...]:
         RateLimitRule("GET", "/dashboard/summary", settings.RATE_LIMIT_DASHBOARD_PER_WINDOW, "dashboard-summary"),
         RateLimitRule("GET", "/history/verifications", settings.RATE_LIMIT_HISTORY_PER_WINDOW, "history-verifications"),
         RateLimitRule("POST", "/analysis/propagation", settings.RATE_LIMIT_ANALYSIS_PER_WINDOW, "analysis-propagation"),
+        RateLimitRule("POST", "/analysis/anomaly-detection", settings.RATE_LIMIT_ANALYSIS_PER_WINDOW, "analysis-anomaly-detection"),
+        RateLimitRule("POST", "/analysis/bot-detection", settings.RATE_LIMIT_ANALYSIS_PER_WINDOW, "analysis-bot-detection"),
         RateLimitRule("POST", "/analysis/domain-security", settings.RATE_LIMIT_ANALYSIS_PER_WINDOW, "analysis-domain-security"),
         RateLimitRule("POST", "/analysis/reddit-propagation", settings.RATE_LIMIT_ANALYSIS_PER_WINDOW, "analysis-reddit-propagation"),
         RateLimitRule("GET", "/analysis/trending-news", settings.RATE_LIMIT_TRENDING_PER_WINDOW, "analysis-trending-news"),

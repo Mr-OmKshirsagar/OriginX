@@ -17,7 +17,7 @@ class _FakeResponse:
 
 def test_generate_evidence_summary_uses_gemini(monkeypatch) -> None:
     monkeypatch.setattr(settings, "GOOGLE_AI_STUDIO_API_KEY", "demo-key")
-    monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-3.0-mini")
+    monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-2.5-flash")
 
     def _fake_post(*args, **kwargs):
         return _FakeResponse(

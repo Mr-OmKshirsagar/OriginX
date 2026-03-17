@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote_plus
+from urllib.parse import urlparse
+import re
 
 import requests
 
@@ -21,6 +23,26 @@ def _iso_from_utc(ts: float | int | None) -> str:
     if ts is None:
         return datetime.now(timezone.utc).isoformat()
     return datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat()
+
+
+def _extract_first_url(text: str) -> str | None:
+    match = re.search(r"https?://[^\s]+", text)
+    if not match:
+        return None
+    return match.group(0)
+
+
+def _normalize_domain(url: str | None) -> str | None:
+    if not url:
+        return None
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").strip().lower()
+    if not hostname:
+        return None
+    normalized = hostname.removeprefix("www.")
+    if normalized.endswith("reddit.com"):
+        return None
+    return normalized
 
 
 def search_reddit_posts(query: str, limit: int = 20, sort: str = "new", time_filter: str = "week") -> list[dict[str, Any]]:
@@ -43,6 +65,7 @@ def search_reddit_posts(query: str, limit: int = 20, sort: str = "new", time_fil
     posts: list[dict[str, Any]] = []
     for child in children:
         data = child.get("data") or {}
+        external_url = str(data.get("url", "")).strip() or None
         posts.append(
             {
                 "post_id": str(data.get("id", "")).strip(),
@@ -50,6 +73,8 @@ def search_reddit_posts(query: str, limit: int = 20, sort: str = "new", time_fil
                 "claim_text": f"{data.get('title', '')} {data.get('selftext', '')}".strip(),
                 "timestamp": _iso_from_utc(data.get("created_utc")),
                 "narrative_key": query.lower().strip(),
+                "url": external_url,
+                "domain": _normalize_domain(external_url),
                 "subreddit": data.get("subreddit"),
                 "permalink": f"https://www.reddit.com{data.get('permalink', '')}",
                 "num_comments": int(data.get("num_comments") or 0),
@@ -84,12 +109,15 @@ def fetch_reddit_comments(post_id: str, claim_key: str, limit: int = 20) -> list
         author = str(data.get("author", "unknown")).strip() or "unknown"
         if not body or body in {"[deleted]", "[removed]"}:
             continue
+        external_url = _extract_first_url(body)
         events.append(
             {
                 "user_id": author,
                 "claim_text": body,
                 "timestamp": _iso_from_utc(data.get("created_utc")),
                 "narrative_key": claim_key,
+                "url": external_url,
+                "domain": _normalize_domain(external_url),
             }
         )
 
@@ -142,5 +170,6 @@ def analyze_reddit_propagation(
         "source": "reddit",
         "query": query,
         "events_count": len(events),
+        "events": events,
         "analysis": analysis,
     }

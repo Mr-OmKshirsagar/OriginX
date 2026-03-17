@@ -53,6 +53,15 @@ export interface RedditEdge {
   weight: number;
 }
 
+export interface PropagationEvent {
+  user_id: string;
+  claim_text: string;
+  timestamp?: string | null;
+  narrative_key?: string | null;
+  url?: string | null;
+  domain?: string | null;
+}
+
 export interface RedditAnalysis {
   patient_zero: string | null;
   spread_nodes: number;
@@ -68,7 +77,42 @@ export interface RedditPropagationResponse {
   source: "reddit";
   query: string;
   events_count: number;
+  events?: PropagationEvent[];
   analysis: RedditAnalysis;
+}
+
+export interface AnomalyFinding {
+  type: string;
+  severity: "low" | "medium" | "high";
+  score: number;
+  accounts: string[];
+  explanation?: string;
+  domain?: string | null;
+  narrative_key?: string | null;
+}
+
+export interface AnomalyDetectionResponse {
+  events_count: number;
+  anomalies: AnomalyFinding[];
+}
+
+export interface SuspiciousAccount {
+  user_id: string;
+  bot_risk_score: number;
+  risk_level: "low" | "moderate" | "high";
+  signals: string[];
+}
+
+export interface CoordinatedCluster {
+  cluster_id: string;
+  members: string[];
+  shared_claim: string;
+  cluster_risk_score: number;
+}
+
+export interface BotDetectionResponse {
+  suspicious_accounts: SuspiciousAccount[];
+  clusters: CoordinatedCluster[];
 }
 
 export interface TrendingNewsArticle {
@@ -153,11 +197,16 @@ const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string> }).e
 const API_BASE_URL = (viteEnv?.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 
 async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
+  const isFormData = typeof FormData !== "undefined" && options?.body instanceof FormData;
+  const headers = isFormData
+    ? { ...(options?.headers || {}) }
+    : {
+        "Content-Type": "application/json",
+        ...(options?.headers || {}),
+      };
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options?.headers || {}),
-    },
+    headers,
     ...options,
   });
 
@@ -186,6 +235,16 @@ export function verifyClaim(text: string, language?: string): Promise<VerifyClai
   });
 }
 
+export function extractTextFromImage(input: { imageData: string; contentType: string }): Promise<{ text: string }> {
+  return requestJson<{ text: string }>("/analysis/ocr-image", {
+    method: "POST",
+    body: JSON.stringify({
+      image_data: input.imageData,
+      content_type: input.contentType,
+    }),
+  });
+}
+
 export function analyzeDomainSecurity(input: { url?: string; claim_text?: string }): Promise<DomainSecurityResponse> {
   return requestJson<DomainSecurityResponse>("/analysis/domain-security", {
     method: "POST",
@@ -204,6 +263,20 @@ export function analyzeRedditPropagation(input: {
   return requestJson<RedditPropagationResponse>("/analysis/reddit-propagation", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export function analyzeAnomalies(events: PropagationEvent[]): Promise<AnomalyDetectionResponse> {
+  return requestJson<AnomalyDetectionResponse>("/analysis/anomaly-detection", {
+    method: "POST",
+    body: JSON.stringify({ events }),
+  });
+}
+
+export function analyzeBots(events: PropagationEvent[]): Promise<BotDetectionResponse> {
+  return requestJson<BotDetectionResponse>("/analysis/bot-detection", {
+    method: "POST",
+    body: JSON.stringify({ events }),
   });
 }
 

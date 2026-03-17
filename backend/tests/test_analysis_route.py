@@ -1,6 +1,25 @@
 from tests.conftest import create_test_client
 
 
+def test_ocr_image_route(monkeypatch) -> None:
+    from app.routes import analysis as route_module
+
+    monkeypatch.setattr(
+        route_module,
+        "extract_text_from_image_bytes",
+        lambda _image_bytes, _content_type: "Text from uploaded image",
+    )
+
+    client = create_test_client()
+    response = client.post(
+        "/analysis/ocr-image",
+        json={"image_data": "ZmFrZS1pbWFnZS1ieXRlcw==", "content_type": "image/png"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "Text from uploaded image"
+
+
 def test_propagation_analysis_route(monkeypatch) -> None:
     from app.routes import analysis as route_module
 
