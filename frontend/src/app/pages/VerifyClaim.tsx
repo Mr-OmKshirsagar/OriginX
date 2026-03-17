@@ -18,6 +18,10 @@ import {
   Bot,
   BadgeCheck,
   ScanSearch,
+  Play,
+  Pause,
+  Square,
+  Loader2,
   CalendarClock,
   FileBarChart2,
   Shield,
@@ -28,6 +32,7 @@ import { CredibilityGauge } from '../components/CredibilityGauge';
 import { NetworkBackground } from '../components/NetworkBackground';
 import { useDarkMode } from '../components/DarkModeContext';
 import { useLanguage } from '../components/LanguageContext';
+import { speechSynthesisLocale } from '../i18n/config';
 import { analyzeRedditPropagation, verifyClaim, type RedditPropagationResponse, type VerifyClaimResponse } from '../services/api';
 
 interface Article {
@@ -224,7 +229,7 @@ export function VerifyClaim() {
   const initialClaim = navigationState?.claim || navigationState?.claimText || '';
   const shouldAutoAnalyze = Boolean((navigationState?.autoAnalyze || navigationState?.source === 'history') && initialClaim.trim());
   const { isDarkMode } = useDarkMode();
-  const { t, locale } = useLanguage();
+  const { t, locale, language } = useLanguage();
   const navigate = useNavigate();
 
   const [claim, setClaim] = useState(initialClaim);
@@ -243,7 +248,11 @@ export function VerifyClaim() {
   const [isLoadingFacebook, setIsLoadingFacebook] = useState(false);
   const [isLoadingInstagram, setIsLoadingInstagram] = useState(false);
   const [isLoadingNews, setIsLoadingNews] = useState(false);
+  const [ttsStatus, setTtsStatus] = useState<'idle' | 'loading' | 'playing' | 'paused'>('idle');
   const resultsRef = useRef<HTMLDivElement>(null);
+  const ttsUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const isSpeechSynthesisSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
 
   const formatTimelineDate = (isoDate: string): string => {
     const parsed = new Date(isoDate);
@@ -256,10 +265,10 @@ export function VerifyClaim() {
   const localizeBackendVerdict = (value?: string | null): string | null => {
     if (!value) return null;
     const normalized = normalizeText(value);
-    if (normalized.includes('unsupported') || normalized.includes('likely false')) {
+    if (normalized.includes('unsupported') || normalized.includes('likely false') || normalized.includes('unverified') || normalized.includes('false')) {
       return t('verifyVerdictLikelyFalseUnsupported');
     }
-    if (normalized.includes('likely true') || normalized.includes('supported')) {
+    if (normalized.includes('likely true') || normalized.includes('supported') || normalized.includes('verified') || normalized == 'true') {
       return t('verifyVerdictLikelyTrueSupported');
     }
     if (normalized.includes('uncertain') || normalized.includes('mixed')) {
@@ -273,6 +282,14 @@ export function VerifyClaim() {
     const normalized = normalizeText(value);
     if (normalized.includes('no high-credibility') || normalized.includes('high-similarity news was available')) {
       return t('verifySummaryNoHighCredibility');
+    }
+    return value;
+  };
+
+  const localizeBackendWarning = (value?: string | null): string | null => {
+    if (!value) return null;
+    if (language !== 'en') {
+      return t('verifyWarningGeneric');
     }
     return value;
   };
@@ -754,6 +771,57 @@ export function VerifyClaim() {
       ? t('verifyPracticalTakeawayMedium')
       : t('verifyPracticalTakeawayLow');
 
+  const aiSummarySpeechText = `${explanationHeadline}. ${summaryText}. ${practicalTakeaway}`;
+
+  const stopTts = () => {
+    if (!isSpeechSynthesisSupported) return;
+    window.speechSynthesis.cancel();
+    ttsUtteranceRef.current = null;
+    setTtsStatus('idle');
+  };
+
+  const playSummaryTts = () => {
+    if (!isSpeechSynthesisSupported) return;
+    if (!aiSummarySpeechText.trim()) return;
+
+    window.speechSynthesis.cancel();
+    setTtsStatus('loading');
+
+    const utterance = new SpeechSynthesisUtterance(aiSummarySpeechText);
+    utterance.lang = speechSynthesisLocale(language);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    utterance.onstart = () => setTtsStatus('playing');
+    utterance.onpause = () => setTtsStatus('paused');
+    utterance.onresume = () => setTtsStatus('playing');
+    utterance.onend = () => {
+      ttsUtteranceRef.current = null;
+      setTtsStatus('idle');
+    };
+    utterance.onerror = () => {
+      ttsUtteranceRef.current = null;
+      setTtsStatus('idle');
+    };
+
+    ttsUtteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const pauseTts = () => {
+    if (!isSpeechSynthesisSupported) return;
+    if (!window.speechSynthesis.speaking) return;
+    window.speechSynthesis.pause();
+    setTtsStatus('paused');
+  };
+
+  const resumeTts = () => {
+    if (!isSpeechSynthesisSupported) return;
+    window.speechSynthesis.resume();
+    setTtsStatus('playing');
+  };
+
   const hasPendingClaimChanges = Boolean(showResults && lastAnalyzedClaim.trim() && claim.trim() !== lastAnalyzedClaim.trim());
 
   const getSourceRating = (similarity: number) => {
@@ -775,13 +843,13 @@ export function VerifyClaim() {
     setRedditError(null);
 
     try {
-      const response = await verifyClaim(claim.trim());
+      const response = await verifyClaim(claim.trim(), language);
       setVerificationData(response);
       setAnalyzedAt(new Date());
       setLastAnalyzedClaim(claim.trim());
       setShowResults(true);
     } catch (error) {
-      setAnalysisError(error instanceof Error ? error.message : t('verifyBackendError'));
+      setAnalysisError(t('verifyBackendError'));
       setShowResults(false);
     } finally {
       setIsAnalyzing(false);
@@ -866,6 +934,19 @@ export function VerifyClaim() {
 
     return () => window.cancelAnimationFrame(frame);
   }, [showResults]);
+
+  useEffect(() => {
+    return () => {
+      if (!isSpeechSynthesisSupported) return;
+      window.speechSynthesis.cancel();
+    };
+  }, [isSpeechSynthesisSupported]);
+
+  useEffect(() => {
+    if (ttsStatus === 'playing' || ttsStatus === 'paused') {
+      stopTts();
+    }
+  }, [language, aiSummarySpeechText]);
 
   return (
     <div className={`min-h-screen transition-colors ${isDarkMode ? 'bg-[#0F172A]' : 'bg-[#F8FAFC]'}`}>
@@ -984,7 +1065,7 @@ export function VerifyClaim() {
 
               {verificationData?.warning && (
                 <div className="mt-4 rounded-xl border border-[#F59E0B]/30 bg-[#F59E0B]/10 px-4 py-3 text-sm text-[#FCD34D]">
-                  {verificationData.warning}
+                  {localizeBackendWarning(verificationData.warning)}
                 </div>
               )}
             </div>
@@ -1131,13 +1212,69 @@ export function VerifyClaim() {
 
               {/* AI Explanation */}
               <div className={`rounded-2xl border p-6 ${isDarkMode ? 'bg-[#111827] border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#3B82F6] to-[#22D3EE]">
-                    <Bot className="w-5 h-5 text-white" />
+                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#3B82F6] to-[#22D3EE]">
+                      <Bot className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className={`text-xs uppercase tracking-[0.18em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyExplanationSummary')}</p>
+                      <h2 className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('verifyAiExplanation')}</h2>
+                    </div>
                   </div>
-                  <div>
-                    <p className={`text-xs uppercase tracking-[0.18em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyExplanationSummary')}</p>
-                    <h2 className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('verifyAiExplanation')}</h2>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={playSummaryTts}
+                      disabled={!isSpeechSynthesisSupported || ttsStatus === 'loading' || ttsStatus === 'playing'}
+                      aria-label={t('verifyTtsPlay')}
+                      title={!isSpeechSynthesisSupported ? t('verifyTtsNotSupported') : t('verifyTtsPlay')}
+                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                        isDarkMode
+                          ? 'border-[#334155] bg-[#0F172A] text-[#93C5FD] hover:border-[#3B82F6] disabled:opacity-50 disabled:cursor-not-allowed'
+                          : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8] hover:border-[#60A5FA] disabled:opacity-50 disabled:cursor-not-allowed'
+                      }`}
+                    >
+                      {ttsStatus === 'loading' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                      <span>{t('verifyTtsPlay')}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={ttsStatus === 'paused' ? resumeTts : pauseTts}
+                      disabled={ttsStatus !== 'playing' && ttsStatus !== 'paused'}
+                      aria-label={ttsStatus === 'paused' ? t('verifyTtsResume') : t('verifyTtsPause')}
+                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                        isDarkMode
+                          ? 'border-[#334155] bg-[#0F172A] text-[#93C5FD] hover:border-[#3B82F6] disabled:opacity-50 disabled:cursor-not-allowed'
+                          : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8] hover:border-[#60A5FA] disabled:opacity-50 disabled:cursor-not-allowed'
+                      }`}
+                    >
+                      {ttsStatus === 'paused' ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+                      <span>{ttsStatus === 'paused' ? t('verifyTtsResume') : t('verifyTtsPause')}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={stopTts}
+                      disabled={ttsStatus === 'idle'}
+                      aria-label={t('verifyTtsStop')}
+                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                        isDarkMode
+                          ? 'border-[#334155] bg-[#0F172A] text-[#FCA5A5] hover:border-[#EF4444] disabled:opacity-50 disabled:cursor-not-allowed'
+                          : 'border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C] hover:border-[#EF4444] disabled:opacity-50 disabled:cursor-not-allowed'
+                      }`}
+                    >
+                      <Square className="h-3.5 w-3.5" />
+                      <span>{t('verifyTtsStop')}</span>
+                    </button>
+
+                    {(ttsStatus === 'playing' || ttsStatus === 'loading') && (
+                      <span className={`text-xs ${isDarkMode ? 'text-[#93C5FD]' : 'text-[#1D4ED8]'}`} role="status" aria-live="polite">
+                        {ttsStatus === 'loading' ? t('verifyTtsLoading') : t('verifyTtsSpeakingSummary')}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <motion.div

@@ -179,10 +179,10 @@ async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
   return payload as T;
 }
 
-export function verifyClaim(text: string): Promise<VerifyClaimResponse> {
+export function verifyClaim(text: string, language?: string): Promise<VerifyClaimResponse> {
   return requestJson<VerifyClaimResponse>("/verify-claim", {
     method: "POST",
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, language }),
   });
 }
 

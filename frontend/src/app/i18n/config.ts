@@ -49,3 +49,23 @@ export function scriptFromLanguage(language: AppLanguage): AppScript {
 export function directionFromLanguage(language: AppLanguage): AppDirection {
   return SUPPORTED_LANGUAGES.find((option) => option.value === language)?.dir || 'ltr';
 }
+
+export function speechSynthesisLocale(language: AppLanguage): string {
+  const localeMap: Record<AppLanguage, string> = {
+    en: 'en-US',
+    hi: 'hi-IN',
+    mr: 'mr-IN',
+    es: 'es-ES',
+    fr: 'fr-FR',
+    de: 'de-DE',
+    ta: 'ta-IN',
+    te: 'te-IN',
+    bn: 'bn-IN',
+    kn: 'kn-IN',
+    ml: 'ml-IN',
+    gu: 'gu-IN',
+    pa: 'pa-IN',
+  };
+
+  return localeMap[language] || 'en-US';
+}

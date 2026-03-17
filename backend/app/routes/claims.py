@@ -14,7 +14,7 @@ from app.services.claims_service import (
     insert_verification_history,
 )
 from app.services.credibility_engine import generate_verification_result
-from app.services.gemini_summary import generate_evidence_summary
+from app.services.gemini_summary import generate_evidence_summary, localize_evidence_articles
 from app.services.news_verification import search_news_sources
 from app.services.reddit_propagation import analyze_reddit_propagation
 from app.utils.text_processing import preprocess_claim_text
@@ -32,10 +32,12 @@ def _raise_operation_failed() -> None:
 
 class VerifyClaimRequest(BaseModel):
     text: str = Field(min_length=1)
+    language: str | None = None
 
 
 class FinalVerifyRequest(BaseModel):
     text: str = Field(min_length=1)
+    language: str | None = None
     include_propagation: bool = False
     propagation_query: str | None = None
     reddit_limit: int = 10
@@ -68,6 +70,7 @@ def _extract_source_names(sources: Any) -> list[str]:
 @router.post("/verify-claim")
 def verify_claim(payload: VerifyClaimRequest) -> dict:
     processed_text = preprocess_claim_text(payload.text)
+    requested_language = (payload.language or "en").strip().lower()
 
     if not processed_text:
         raise HTTPException(status_code=422, detail="Claim text cannot be empty after normalization.")
@@ -78,17 +81,23 @@ def verify_claim(payload: VerifyClaimRequest) -> dict:
             previous_verification_result = str(previous_result.get("verification_result", ""))
             previous_verdict = previous_result.get("verdict") or _verdict_from_result(previous_verification_result)
             previous_sources = previous_result.get("sources") if isinstance(previous_result.get("sources"), list) else []
+            previous_summary = generate_evidence_summary(
+                processed_text,
+                previous_sources,
+                output_language=requested_language,
+            )
+            localized_sources = localize_evidence_articles(previous_sources, output_language=requested_language)
             found_response = {
                 "status": "found",
                 "verification_result": previous_verification_result,
                 "verdict": previous_verdict,
                 "credibility_score": previous_result.get("credibility_score"),
-                "summary": previous_result.get("summary"),
+                "summary": previous_summary,
             }
 
-            if previous_sources:
-                found_response["articles_found"] = len(previous_sources)
-                found_response["sources"] = previous_sources
+            if localized_sources:
+                found_response["articles_found"] = len(localized_sources)
+                found_response["sources"] = localized_sources
 
             return found_response
 
@@ -106,6 +115,7 @@ def verify_claim(payload: VerifyClaimRequest) -> dict:
         summary = generate_evidence_summary(
             processed_text,
             verification_result.get("top_credible_articles", []),
+            output_language=requested_language,
         )
 
         insert_verification_history(
@@ -123,6 +133,8 @@ def verify_claim(payload: VerifyClaimRequest) -> dict:
     except Exception as exc:
         _raise_internal_server_error()
 
+    localized_sources = localize_evidence_articles(news_lookup.get("articles", []), output_language=requested_language)
+
     response_payload = {
         "status": "generated",
         "message": "No history found. Generated and stored a new verification result.",
@@ -131,8 +143,8 @@ def verify_claim(payload: VerifyClaimRequest) -> dict:
         "verdict": verification_result["verdict"],
         "credibility_score": verification_result["credibility_score"],
         "summary": summary,
-        "articles_found": news_lookup.get("articles_found", 0),
-        "sources": news_lookup.get("articles", []),
+        "articles_found": len(localized_sources),
+        "sources": localized_sources,
     }
 
     if "warning" in news_lookup:
@@ -144,6 +156,7 @@ def verify_claim(payload: VerifyClaimRequest) -> dict:
 @router.post("/verify-claim/final")
 def verify_claim_final(payload: FinalVerifyRequest) -> dict[str, Any]:
     processed_text = preprocess_claim_text(payload.text)
+    requested_language = (payload.language or "en").strip().lower()
 
     if not processed_text:
         raise HTTPException(status_code=422, detail="Claim text cannot be empty after normalization.")
@@ -152,12 +165,18 @@ def verify_claim_final(payload: FinalVerifyRequest) -> dict[str, Any]:
         history = get_claim_history(processed_text)
         if history:
             latest = history[0]
+            latest_sources = latest.get("sources") if isinstance(latest.get("sources"), list) else []
+            summary = generate_evidence_summary(
+                processed_text,
+                latest_sources,
+                output_language=requested_language,
+            )
             response: dict[str, Any] = {
                 "claim": processed_text,
                 "verification_result": str(latest.get("verification_result", "")),
                 "credibility_score": latest.get("credibility_score"),
-                "summary": latest.get("summary"),
-                "sources": _extract_source_names(latest.get("sources", [])),
+                "summary": summary,
+                "sources": _extract_source_names(latest_sources),
                 "history_count": len(history),
             }
         else:
@@ -175,6 +194,7 @@ def verify_claim_final(payload: FinalVerifyRequest) -> dict[str, Any]:
             summary = generate_evidence_summary(
                 processed_text,
                 verification_result.get("top_credible_articles", []),
+                output_language=requested_language,
             )
 
             insert_verification_history(
