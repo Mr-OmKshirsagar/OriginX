@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { Search, Filter, Download, ExternalLink, Calendar, Database, ChevronDown, Check } from 'lucide-react';
 import { Sidebar } from '../components/Sidebar';
@@ -15,6 +16,7 @@ interface HistoryItem {
 }
 
 export function History() {
+  const navigate = useNavigate();
   const { isDarkMode } = useDarkMode();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -191,7 +193,12 @@ export function History() {
       <div className="ml-64 p-8">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8">
-            <h1 className={`text-3xl font-bold mb-2 transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>Verification History</h1>
+            <h1 className={`text-3xl font-bold mb-2 transition-colors flex items-center gap-3 ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>
+              <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${isDarkMode ? 'bg-[#1E293B] text-[#22D3EE]' : 'bg-[#EFF6FF] text-[#2563EB]'}`}>
+                <Database className="w-5 h-5" />
+              </span>
+              Verification History
+            </h1>
             <p className={`transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>Browse and manage your past verifications</p>
             <p className={`text-sm mt-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
               Live sync from database every {refreshIntervalSeconds}s.
@@ -415,7 +422,10 @@ export function History() {
                               <span className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>{item.sourcesFound}</span>
                             </td>
                             <td className="px-6 py-4">
-                              <button className="text-[#3B82F6] hover:text-[#2563EB] flex items-center gap-1 text-sm">
+                              <button
+                                onClick={() => navigate('/verify', { state: { claimText: item.claim, source: 'history' } })}
+                                className="text-[#3B82F6] hover:text-[#2563EB] flex items-center gap-1 text-sm transition-colors"
+                              >
                                 View
                                 <ExternalLink className="w-4 h-4" />
                               </button>

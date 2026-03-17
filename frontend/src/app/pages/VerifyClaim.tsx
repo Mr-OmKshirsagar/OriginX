@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import {
   Sparkles,
@@ -18,7 +18,10 @@ import {
   Bot,
   BadgeCheck,
   ScanSearch,
-  CalendarClock
+  CalendarClock,
+  FileBarChart2,
+  Shield,
+  Globe as GlobeIcon,
 } from 'lucide-react';
 import { Sidebar } from '../components/Sidebar';
 import { CredibilityGauge } from '../components/CredibilityGauge';
@@ -122,10 +125,21 @@ function MetricCard({
       whileHover={{ y: -4 }}
       className={`relative overflow-hidden rounded-2xl border p-5 transition-all duration-300 ${
         isDarkMode
-          ? 'bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(15,23,42,0.72))] border-white/8 backdrop-blur-xl'
-          : 'bg-white/90 border-[#E2E8F0] backdrop-blur-xl'
+          ? 'bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(15,23,42,0.72))] border-white/8 backdrop-blur-xl hover:border-white/20'
+          : 'bg-white/90 border-[#E2E8F0] backdrop-blur-xl hover:border-[#BFDBFE]'
       }`}
-      style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.03), 0 18px 40px ${glow}` }}
+      style={{ 
+        boxShadow: `0 0 0 1px rgba(255,255,255,0.03), 0 18px 40px ${glow}`,
+        borderColor: 'inherit'
+      }}
+      onMouseEnter={(e) => {
+        const target = e.currentTarget as HTMLDivElement;
+        target.style.borderColor = accent;
+      }}
+      onMouseLeave={(e) => {
+        const target = e.currentTarget as HTMLDivElement;
+        target.style.borderColor = 'inherit';
+      }}
     >
       <div
         className="absolute inset-x-0 top-0 h-px"
@@ -205,10 +219,11 @@ function SpreadTimelinePanel({ eyebrow, heading, events, isDarkMode }: SpreadTim
 
 export function VerifyClaim() {
   const location = useLocation();
-  const navigationState = location.state as { claim?: string; autoAnalyze?: boolean } | null;
-  const initialClaim = navigationState?.claim || '';
-  const shouldAutoAnalyze = Boolean(navigationState?.autoAnalyze && initialClaim.trim());
+  const navigationState = location.state as { claim?: string; claimText?: string; autoAnalyze?: boolean; source?: string } | null;
+  const initialClaim = navigationState?.claim || navigationState?.claimText || '';
+  const shouldAutoAnalyze = Boolean((navigationState?.autoAnalyze || navigationState?.source === 'history') && initialClaim.trim());
   const { isDarkMode } = useDarkMode();
+  const navigate = useNavigate();
 
   const [claim, setClaim] = useState(initialClaim);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -330,6 +345,77 @@ export function VerifyClaim() {
 
   const trustedSources = articles.filter((article) => article.similarity >= 0.7);
   const suspiciousSources = articles.filter((article) => article.similarity < 0.7);
+  const hasThreatSignal = suspiciousSources.length > 0 || credibilityScore < 50;
+  const threatPanelTheme = hasThreatSignal
+    ? {
+        eyebrow: 'Threat Intelligence',
+        headline: 'Suspicious Domain Detected',
+        description: 'This source has a low trust profile and matches known disinformation patterns. Our AI flagged critical security and credibility concerns.',
+        badge: 'HIGH RISK',
+        domainText: 'fakepoliticsnews.com',
+        statusText: 'SUSPICIOUS',
+        score: 2,
+        topBar: 'linear-gradient(90deg, #EF4444, #F97316, #CA8A04)',
+        orbTop: 'rgba(239,68,68,0.12)',
+        orbBottom: 'linear-gradient(90deg, rgba(239,68,68,0.08), transparent)',
+        panelBorderDark: 'border-white/8',
+        panelBorderLight: 'border-[#E2E8F0]',
+        iconSurface: 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.1))',
+        iconColor: '#F87171',
+        eyebrowDark: 'text-[#F87171]',
+        eyebrowLight: 'text-[#DC2626]',
+        badgeBorder: 'rgba(239,68,68,0.3)',
+        badgeSurface: 'linear-gradient(90deg, rgba(239,68,68,0.15), rgba(239,68,68,0.05))',
+        badgeText: '#EF4444',
+        metricCardDark: 'bg-gradient-to-br from-[#1F2937] to-[#111827] border-[#374151]/60 hover:border-[#F87171]/40 hover:shadow-[0_16px_32px_rgba(239,68,68,0.12)]',
+        metricCardLight: 'bg-gradient-to-br from-white to-[#F9FAFB] border-[#E5E7EB] hover:border-[#FCA5A5] hover:shadow-lg',
+        metricIconSurface: 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.1))',
+        metricIconHoverSurface: 'linear-gradient(135deg, rgba(239,68,68,0.3), rgba(239,68,68,0.2))',
+        metricAccent: '#EF4444',
+        metricMutedDark: 'text-[#9CA3AF]',
+        metricMutedLight: 'text-[#6B7280]',
+        buttonDark: 'bg-gradient-to-r from-[#EF4444]/12 to-[#F97316]/8 border-[#EF4444]/30 hover:border-[#EF4444]/60 hover:shadow-[0_20px_40px_rgba(239,68,68,0.15)]',
+        buttonLight: 'bg-gradient-to-r from-[#FEE2E2] to-[#FEF3C7] border-[#FCA5A5] hover:border-[#F87171] hover:shadow-lg',
+        buttonIcon: 'linear-gradient(135deg, #EF4444, #F97316)',
+        buttonTitleLight: 'text-[#7F1D1D]',
+        buttonSubtitleLight: 'text-[#B45309]',
+        actionText: '#EF4444',
+      }
+    : {
+        eyebrow: 'Threat Intelligence',
+        headline: 'No Threat Signals Detected',
+        description: 'This source currently shows a healthy trust profile. Our AI did not detect critical security or credibility threats in the available evidence.',
+        badge: 'LOW RISK',
+        domainText: 'verified-safe-source.com',
+        statusText: 'SAFE',
+        score: 8,
+        topBar: 'linear-gradient(90deg, #22C55E, #10B981, #14B8A6)',
+        orbTop: 'rgba(34,197,94,0.12)',
+        orbBottom: 'linear-gradient(90deg, rgba(34,197,94,0.08), transparent)',
+        panelBorderDark: 'border-white/8',
+        panelBorderLight: 'border-[#D1FAE5]',
+        iconSurface: 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(16,185,129,0.1))',
+        iconColor: '#22C55E',
+        eyebrowDark: 'text-[#4ADE80]',
+        eyebrowLight: 'text-[#15803D]',
+        badgeBorder: 'rgba(34,197,94,0.28)',
+        badgeSurface: 'linear-gradient(90deg, rgba(34,197,94,0.16), rgba(16,185,129,0.06))',
+        badgeText: '#22C55E',
+        metricCardDark: 'bg-gradient-to-br from-[#14231C] to-[#111827] border-[#2C4A3A]/70 hover:border-[#4ADE80]/45 hover:shadow-[0_16px_32px_rgba(34,197,94,0.12)]',
+        metricCardLight: 'bg-gradient-to-br from-white to-[#F0FDF4] border-[#BBF7D0] hover:border-[#4ADE80] hover:shadow-lg',
+        metricIconSurface: 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(16,185,129,0.1))',
+        metricIconHoverSurface: 'linear-gradient(135deg, rgba(34,197,94,0.3), rgba(16,185,129,0.18))',
+        metricAccent: '#22C55E',
+        metricMutedDark: 'text-[#9CA3AF]',
+        metricMutedLight: 'text-[#6B7280]',
+        buttonDark: 'bg-gradient-to-r from-[#22C55E]/14 to-[#14B8A6]/10 border-[#22C55E]/30 hover:border-[#4ADE80]/60 hover:shadow-[0_20px_40px_rgba(34,197,94,0.14)]',
+        buttonLight: 'bg-gradient-to-r from-[#DCFCE7] to-[#CCFBF1] border-[#86EFAC] hover:border-[#22C55E] hover:shadow-lg',
+        buttonIcon: 'linear-gradient(135deg, #22C55E, #14B8A6)',
+        buttonTitleLight: 'text-[#14532D]',
+        buttonSubtitleLight: 'text-[#0F766E]',
+        actionText: '#22C55E',
+      };
+  const ThreatPanelIcon = hasThreatSignal ? AlertTriangle : ShieldCheck;
 
   const fallbackVerdict = credibilityScore >= 75 ? 'Likely true' : credibilityScore >= 50 ? 'Uncertain' : 'Likely false';
   const verdictLabel = verificationData?.verdict || fallbackVerdict;
@@ -751,7 +837,12 @@ export function VerifyClaim() {
         <div className="max-w-6xl mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <h1 className={`text-3xl mb-2 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Verify Claim</h1>
+            <h1 className={`text-3xl mb-2 flex items-center gap-3 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
+              <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${isDarkMode ? 'bg-[#1E293B] text-[#22D3EE]' : 'bg-[#EFF6FF] text-[#2563EB]'}`}>
+                <ScanSearch className="w-5 h-5" />
+              </span>
+              Verify Claim
+            </h1>
             <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>Enter a news claim or upload an image to verify its authenticity</p>
           </div>
 
@@ -768,7 +859,12 @@ export function VerifyClaim() {
             <div className="relative space-y-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className={`text-[20px] font-semibold uppercase tracking-[0.12em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Credibility Visualization</p>
+                  <p className={`text-[20px] font-semibold uppercase tracking-[0.12em] flex items-center gap-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
+                    <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${isDarkMode ? 'bg-[#1E293B] text-[#22D3EE]' : 'bg-[#EFF6FF] text-[#2563EB]'}`}>
+                      <ShieldCheck className="w-4 h-4" />
+                    </span>
+                    Credibility Visualization
+                  </p>
                 </div>
                 <div className={`rounded-full border px-3 py-1 text-xs ${isDarkMode ? 'border-white/10 bg-white/5 text-[#93C5FD]' : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]'}`}>
                   Fact-check Assistant
@@ -872,7 +968,7 @@ export function VerifyClaim() {
                   : 'bg-white border-[#E2E8F0]'
               }`}>
                 <div className="absolute -right-20 top-0 h-64 w-64 rounded-full bg-[#22D3EE]/10 blur-3xl" />
-                <div className="absolute left-0 top-0 h-px w-full bg-[linear-gradient(90deg,transparent,#22D3EE,transparent)] opacity-40" />
+                <div className="absolute left-0 top-0 h-px w-full bg-[linear-gradient(90deg,transparent,#FACC15,transparent)] opacity-70" />
 
                 <div className="relative space-y-8">
                   <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
@@ -917,16 +1013,20 @@ export function VerifyClaim() {
                             <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Analyzed Claim</p>
                             <p className={`text-lg leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{claim}</p>
                           </div>
-                          <div className="min-w-[220px] rounded-2xl border border-white/10 bg-[#0B1120]/70 p-4 backdrop-blur-xl">
+                          <div className={`min-w-[220px] rounded-2xl border p-4 ${
+                            isDarkMode
+                              ? 'border-white/10 bg-[#0B1120]/70 backdrop-blur-xl'
+                              : 'border-[#CBD5E1] bg-white shadow-sm'
+                          }`}>
                             <div className="flex items-center gap-2 mb-2">
                               <span className="relative flex h-2.5 w-2.5">
                                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22C55E] opacity-60"></span>
                                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#22C55E]"></span>
                               </span>
-                              <p className="text-sm text-[#22C55E]">{verificationVerdict.status}</p>
+                              <p className={`text-sm ${isDarkMode ? 'text-[#22C55E]' : 'text-[#16A34A]'}`}>{verificationVerdict.status}</p>
                             </div>
-                            <div className="flex items-center gap-2 text-sm text-[#94A3B8]">
-                              <CalendarClock className="w-4 h-4 text-[#22D3EE]" />
+                            <div className={`flex items-center gap-2 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
+                              <CalendarClock className={`w-4 h-4 ${isDarkMode ? 'text-[#22D3EE]' : 'text-[#0891B2]'}`} />
                               <span>{analyzedTimestamp}</span>
                             </div>
                             <div className="mt-3 inline-flex items-center rounded-full border px-3 py-1 text-xs"
@@ -955,7 +1055,7 @@ export function VerifyClaim() {
                           </div>
                         </div>
                         <div className="flex flex-col items-center justify-center gap-4 xl:flex-row xl:items-center xl:justify-between">
-                          <CredibilityGauge score={credibilityScore} />
+                          <CredibilityGauge score={credibilityScore} isDarkMode={isDarkMode} />
                           <div className="w-full max-w-xs space-y-3">
                             <div className="rounded-2xl border border-white/8 bg-white/5 p-4 backdrop-blur-md">
                               <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Verdict</p>
@@ -1179,11 +1279,46 @@ export function VerifyClaim() {
                   </div>
 
                   <div className="flex items-stretch gap-3 lg:flex-nowrap lg:justify-end">
-                    <div className="min-w-[170px] rounded-xl px-4 py-3 border bg-gradient-to-br from-[#3B82F6]/12 to-[#3B82F6]/5 border-[#3B82F6]/20">
+                    <div 
+                      className="min-w-[170px] rounded-xl px-4 py-3 border bg-gradient-to-br from-[#3B82F6]/12 to-[#3B82F6]/5 border-[#3B82F6]/20 transition-all duration-300 cursor-pointer hover:border-[#3B82F6]/60"
+                      style={{ borderColor: '#3B82F6' + '33' }}
+                      onMouseEnter={(e) => {
+                        const target = e.currentTarget as HTMLDivElement;
+                        target.style.borderColor = '#3B82F6';
+                      }}
+                      onMouseLeave={(e) => {
+                        const target = e.currentTarget as HTMLDivElement;
+                        target.style.borderColor = '#3B82F6' + '33';
+                      }}
+                    >
                       <p className={`text-xs uppercase tracking-[0.18em] ${isDarkMode ? 'text-[#93C5FD]' : 'text-[#1D4ED8]'}`}>Sources Compared</p>
                       <p className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{articles.length}</p>
                     </div>
-                    <div className={`min-w-[170px] rounded-xl px-4 py-3 border ${getAverageMatchMeta(averageSimilarity).container}`}>
+                    <div 
+                      className={`min-w-[170px] rounded-xl px-4 py-3 border transition-all duration-300 cursor-pointer ${getAverageMatchMeta(averageSimilarity).container}`}
+                      onMouseEnter={(e) => {
+                        const target = e.currentTarget as HTMLDivElement;
+                        const meta = getAverageMatchMeta(averageSimilarity);
+                        // Extract accent color from container class
+                        if (averageSimilarity >= 70) {
+                          target.style.borderColor = '#22C55E';
+                        } else if (averageSimilarity >= 40) {
+                          target.style.borderColor = '#F59E0B';
+                        } else {
+                          target.style.borderColor = '#EF4444';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        const target = e.currentTarget as HTMLDivElement;
+                        if (averageSimilarity >= 70) {
+                          target.style.borderColor = '#22C55E' + '33';
+                        } else if (averageSimilarity >= 40) {
+                          target.style.borderColor = '#F59E0B' + '33';
+                        } else {
+                          target.style.borderColor = '#EF4444' + '33';
+                        }
+                      }}
+                    >
                       <p className={`text-xs uppercase tracking-[0.18em] ${getAverageMatchMeta(averageSimilarity).title}`}>Average Match</p>
                       <p className={`text-lg ${getAverageMatchMeta(averageSimilarity).value}`}>{averageSimilarity}%</p>
                       <p className={`text-xs mt-1 ${getAverageMatchMeta(averageSimilarity).title}`}>{getAverageMatchMeta(averageSimilarity).label}</p>
@@ -1299,41 +1434,143 @@ export function VerifyClaim() {
               </div>
 
               {/* Fake Website Detection */}
-              <div className="bg-gradient-to-br from-[#FEE2E2] to-[#FEF2F2] border-2 border-[#FCA5A5] rounded-2xl p-8">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-[#EF4444] rounded-xl flex items-center justify-center flex-shrink-0">
-                    <AlertTriangle className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg text-[#991B1B] mb-3">Suspicious Domain Detected</h3>
-                    
-                    <div className="bg-white rounded-xl p-4 mb-4">
-                      <p className="text-sm text-[#64748B] mb-1">Domain:</p>
-                      <p className="text-[#EF4444] font-mono">fakepoliticsnews.com</p>
+              <div className={`relative overflow-hidden rounded-[28px] border ${
+                isDarkMode
+                  ? 'bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(30,41,59,0.94))] border-white/8 shadow-[0_24px_60px_rgba(2,6,23,0.35)]'
+                  : 'bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.96))] border-[#E2E8F0] shadow-sm'
+              }`}>
+                <div className="absolute inset-x-0 top-0 h-1.5" style={{ background: threatPanelTheme.topBar }} />
+                <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full blur-3xl pointer-events-none" style={{ backgroundColor: threatPanelTheme.orbTop }} />
+                <div className="absolute -left-20 bottom-0 h-40 w-64 rounded-full blur-3xl pointer-events-none" style={{ background: threatPanelTheme.orbBottom }} />
+
+                <div className="relative p-8 sm:p-10">
+                  <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex items-start gap-5 flex-1">
+                      <div
+                        className="flex h-14 w-14 items-center justify-center rounded-2xl ring-1 flex-shrink-0"
+                        style={{ background: threatPanelTheme.iconSurface, color: threatPanelTheme.iconColor, borderColor: threatPanelTheme.badgeBorder }}
+                      >
+                        <ThreatPanelIcon className="h-6 w-6" />
+                      </div>
+                      <div className="flex-1">
+                        <p className={`text-xs font-semibold uppercase tracking-widest ${isDarkMode ? threatPanelTheme.eyebrowDark : threatPanelTheme.eyebrowLight}`}>
+                          {hasThreatSignal ? '⚠ ' : '✓ '}{threatPanelTheme.eyebrow}
+                        </p>
+                        <h3 className={`mt-2 text-2xl font-bold leading-tight ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
+                          {threatPanelTheme.headline}
+                        </h3>
+                        <p className={`mt-3 max-w-2xl text-sm leading-relaxed ${isDarkMode ? 'text-[#A1A5B0]' : 'text-[#6B7280]'}`}>
+                          {threatPanelTheme.description}
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-white rounded-xl p-4">
-                        <p className="text-sm text-[#64748B] mb-1">Status:</p>
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-[#EF4444] rounded-full animate-pulse"></div>
-                          <p className="text-[#EF4444]">Suspicious Domain</p>
+                    <div
+                      className="inline-flex items-center gap-2.5 self-start rounded-full border px-4 py-2 text-xs font-semibold backdrop-blur-sm"
+                      style={{ borderColor: threatPanelTheme.badgeBorder, background: threatPanelTheme.badgeSurface, color: threatPanelTheme.badgeText }}
+                    >
+                      <span className="h-2.5 w-2.5 rounded-full animate-pulse" style={{ backgroundColor: threatPanelTheme.badgeText }} />
+                      {threatPanelTheme.badge}
+                    </div>
+                  </div>
+
+                  <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_0.9fr_0.85fr]">
+                    <div className={`group rounded-2xl border p-5 cursor-pointer transition-all duration-300 hover:-translate-y-1 ${
+                      isDarkMode
+                        ? threatPanelTheme.metricCardDark
+                        : threatPanelTheme.metricCardLight
+                    }`}>
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl transition-all" style={{ background: threatPanelTheme.metricIconSurface, color: threatPanelTheme.metricAccent }}>
+                          <GlobeIcon className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-xs font-semibold uppercase tracking-wider ${isDarkMode ? threatPanelTheme.metricMutedDark : threatPanelTheme.metricMutedLight}`}>
+                            Domain
+                          </p>
+                          <p className="mt-2.5 truncate font-mono text-lg font-bold" style={{ color: threatPanelTheme.metricAccent }}>{threatPanelTheme.domainText}</p>
                         </div>
                       </div>
-                      
-                      <div className="bg-white rounded-xl p-4">
-                        <p className="text-sm text-[#64748B] mb-1">VirusTotal Score:</p>
-                        <p className="text-[#EF4444]">2/10</p>
+                    </div>
+
+                    <div className={`group rounded-2xl border p-5 cursor-pointer transition-all duration-300 hover:-translate-y-1 ${
+                      isDarkMode
+                        ? threatPanelTheme.metricCardDark
+                        : threatPanelTheme.metricCardLight
+                    }`}>
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl transition-all" style={{ background: threatPanelTheme.metricIconSurface, color: threatPanelTheme.metricAccent }}>
+                          <Shield className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1">
+                          <p className={`text-xs font-semibold uppercase tracking-wider ${isDarkMode ? threatPanelTheme.metricMutedDark : threatPanelTheme.metricMutedLight}`}>
+                            Status
+                          </p>
+                          <div className="mt-2.5 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-bold border" style={{ background: threatPanelTheme.badgeSurface, color: threatPanelTheme.metricAccent, borderColor: threatPanelTheme.badgeBorder }}>
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: threatPanelTheme.metricAccent }} />
+                            {threatPanelTheme.statusText}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="mt-4 p-4 bg-white rounded-xl">
-                      <p className="text-sm text-[#64748B]">
-                        This domain has been flagged by our threat intelligence system. It's known for spreading misinformation 
-                        and has a low credibility rating. We recommend verifying information from this source with trusted news outlets.
-                      </p>
+                    <div className={`group rounded-2xl border p-5 cursor-pointer transition-all duration-300 hover:-translate-y-1 ${
+                      isDarkMode
+                        ? threatPanelTheme.metricCardDark
+                        : threatPanelTheme.metricCardLight
+                    }`}>
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl transition-all" style={{ background: threatPanelTheme.metricIconSurface, color: threatPanelTheme.metricAccent }}>
+                          <FileBarChart2 className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className={`text-xs font-semibold uppercase tracking-wider ${isDarkMode ? threatPanelTheme.metricMutedDark : threatPanelTheme.metricMutedLight}`}>
+                            Risk Score
+                          </p>
+                          <p className={`mt-2.5 text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
+                            <span style={{ color: threatPanelTheme.metricAccent }}>{threatPanelTheme.score}</span>
+                            <span className={isDarkMode ? 'text-[#4B5563]' : 'text-[#9CA3AF]'}>/10</span>
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => navigate('/url-investigation', {
+                      state: {
+                        initialUrl: 'https://fakepoliticsnews.com',
+                        source: 'verify-claim',
+                      },
+                    })}
+                    className={`mt-8 flex w-full items-center justify-between rounded-2xl border px-6 py-5 text-left transition-all duration-300 hover:-translate-y-1 font-semibold ${
+                      isDarkMode
+                        ? threatPanelTheme.buttonDark
+                        : threatPanelTheme.buttonLight
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-lg" style={{ background: threatPanelTheme.buttonIcon, boxShadow: `0 12px 24px ${threatPanelTheme.badgeBorder}` }}>
+                        <ScanSearch className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className={`text-base font-bold ${isDarkMode ? 'text-white' : threatPanelTheme.buttonTitleLight}`}>
+                          Run Deep URL Investigation
+                        </p>
+                        <p className={`text-xs mt-0.5 ${isDarkMode ? 'text-[#9CA3AF]' : threatPanelTheme.buttonSubtitleLight}`}>
+                          SSL verification • DNS lookup • Domain history • Trust scoring
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: threatPanelTheme.actionText }}>
+                      Investigate
+                      <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ backgroundColor: `${threatPanelTheme.actionText}18` }}>
+                        <ArrowRight className="h-4 w-4" />
+                      </span>
+                    </div>
+                  </button>
                 </div>
               </div>
 

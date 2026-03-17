@@ -115,7 +115,12 @@ export function Dashboard() {
       <div className="ml-64 p-8">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8">
-            <h1 className={`text-3xl font-bold mb-2 transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>Dashboard</h1>
+            <h1 className={`text-3xl font-bold mb-2 transition-colors flex items-center gap-3 ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>
+              <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${isDarkMode ? 'bg-[#1E293B] text-[#22D3EE]' : 'bg-[#EFF6FF] text-[#2563EB]'}`}>
+                <Activity className="w-5 h-5" />
+              </span>
+              Dashboard
+            </h1>
             <p className={`transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>Overview of your verification activity</p>
             <p className={`text-sm mt-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
               Real-time database sync every {dashboardData?.refresh_interval_seconds ?? 30}s
@@ -188,7 +193,12 @@ export function Dashboard() {
                   : 'bg-white border-[#E2E8F0] shadow-sm'
               }`}>
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className={`text-xl font-bold transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>Recent Verifications</h2>
+                  <h2 className={`text-xl font-bold transition-colors flex items-center gap-2 ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>
+                    <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${isDarkMode ? 'bg-[#1E293B] text-[#22D3EE]' : 'bg-[#EFF6FF] text-[#2563EB]'}`}>
+                      <CheckCircle2 className="w-4 h-4" />
+                    </span>
+                    Recent Verifications
+                  </h2>
                   <Link to="/history" className="text-sm text-[#3B82F6] hover:text-[#2563EB] flex items-center gap-1 font-medium transition-colors">
                     View All
                     <ArrowRight className="w-4 h-4" />
@@ -259,7 +269,12 @@ export function Dashboard() {
                   : 'bg-white border-[#E2E8F0] shadow-sm'
               }`}>
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className={`text-xl font-bold transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>Trending Topics</h2>
+                  <h2 className={`text-xl font-bold transition-colors flex items-center gap-2 ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>
+                    <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${isDarkMode ? 'bg-[#1E293B] text-[#22D3EE]' : 'bg-[#EFF6FF] text-[#2563EB]'}`}>
+                      <TrendingUp className="w-4 h-4" />
+                    </span>
+                    Trending Topics
+                  </h2>
                   <div className="inline-flex items-center gap-2 rounded-full border border-[#EF4444]/20 bg-[#EF4444]/10 px-3 py-1.5">
                     <span className="relative flex h-2.5 w-2.5">
                       <span className="absolute inline-flex h-full w-full animate-[ping_1.4s_cubic-bezier(0,0,0.2,1)_infinite] rounded-full bg-[#EF4444] opacity-70"></span>
