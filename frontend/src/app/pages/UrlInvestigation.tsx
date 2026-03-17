@@ -68,12 +68,12 @@ function Counter({ value, suffix = '', duration = 1100 }: { value: number; suffi
 export function UrlInvestigation() {
   const location = useLocation();
   const { isDarkMode } = useDarkMode();
+  const initialUrlFromState = (location.state as { initialUrl?: string } | null)?.initialUrl || '';
   const [url, setUrl] = useState(() => {
-    const state = location.state as { initialUrl?: string } | null;
-    return state?.initialUrl || 'https://example-news.net/world/breaking-government-bans-all-petrol-cars';
+    return initialUrlFromState;
   });
   const [isInvestigating, setIsInvestigating] = useState(false);
-  const [showResults, setShowResults] = useState(true);
+  const [showResults, setShowResults] = useState(Boolean(initialUrlFromState.trim()));
   const [domainResult, setDomainResult] = useState<DomainSecurityResult | null>(null);
   const [investigationError, setInvestigationError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -82,6 +82,7 @@ export function UrlInvestigation() {
     const state = location.state as { initialUrl?: string } | null;
     if (state?.initialUrl) {
       setUrl(state.initialUrl);
+      setShowResults(true);
     }
   }, [location.state]);
 
@@ -118,7 +119,7 @@ export function UrlInvestigation() {
   };
 
   useEffect(() => {
-    if (!showResults || isInvestigating) return;
+    if (!showResults || isInvestigating || !url.trim()) return;
 
     void runInvestigation();
 

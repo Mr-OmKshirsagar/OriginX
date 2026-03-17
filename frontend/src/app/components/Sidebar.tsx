@@ -59,14 +59,14 @@ export function Sidebar() {
             <Link
               key={item.id}
               to={item.path}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg mb-2 transition-all duration-200 group relative overflow-hidden ${
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg mb-2 border transition-all duration-200 group relative overflow-hidden ${
                 isActive
                   ? isDarkMode 
-                    ? 'bg-gradient-to-r from-[#3B82F6]/20 to-[#22D3EE]/20 text-[#22D3EE] shadow-lg shadow-[#3B82F6]/10' 
-                    : 'bg-[#F1F5F9] text-[#3B82F6]'
+                    ? 'bg-gradient-to-r from-[#3B82F6]/20 to-[#22D3EE]/20 text-[#22D3EE] border-white/25 shadow-lg shadow-[#3B82F6]/10 hover:border-white/80' 
+                    : 'bg-[#F1F5F9] text-[#3B82F6] border-[#BFDBFE] hover:border-white'
                   : isDarkMode 
-                    ? 'text-[#9CA3AF] hover:bg-[#1F2937] hover:text-[#F9FAFB]' 
-                    : 'text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#0F172A]'
+                    ? 'text-[#9CA3AF] border-transparent hover:bg-[#1F2937] hover:text-[#F9FAFB] hover:border-white/80' 
+                    : 'text-[#64748B] border-transparent hover:bg-[#F8FAFC] hover:text-[#0F172A] hover:border-white'
               }`}
             >
               {isActive && isDarkMode && (
