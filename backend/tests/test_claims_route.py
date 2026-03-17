@@ -50,7 +50,7 @@ def test_verify_claim_no_history(monkeypatch) -> None:
     monkeypatch.setattr(
         route_module,
         "generate_evidence_summary",
-        lambda _claim_text, _articles: "Reuters reports city officials said the water supply remains safe.",
+        lambda _claim_text, _articles, output_language="en": "Reuters reports city officials said the water supply remains safe.",
     )
 
     def _fake_insert_verification_history(**kwargs):
@@ -107,6 +107,11 @@ def test_verify_claim_history_found(monkeypatch) -> None:
     )
     monkeypatch.setattr(route_module, "insert_claim", lambda claim_text: {"id": "1", "claim_text": claim_text})
     monkeypatch.setattr(route_module, "search_news_sources", _should_not_call)
+    monkeypatch.setattr(
+        route_module,
+        "generate_evidence_summary",
+        lambda _claim_text, _articles, output_language="en": "Authorities confirmed the water supply is safe.",
+    )
 
     client = create_test_client()
     response = client.post("/verify-claim", json={"text": "The city water supply has been poisoned"})
@@ -137,7 +142,11 @@ def test_verify_claim_empty_after_normalization(monkeypatch) -> None:
             "top_credible_articles": [],
         },
     )
-    monkeypatch.setattr(route_module, "generate_evidence_summary", lambda _claim_text, _articles: "No matching high-credibility reports were found.")
+    monkeypatch.setattr(
+        route_module,
+        "generate_evidence_summary",
+        lambda _claim_text, _articles, output_language="en": "No matching high-credibility reports were found.",
+    )
     monkeypatch.setattr(route_module, "insert_verification_history", lambda **_kwargs: {"id": "vh_1"})
     monkeypatch.setattr(route_module, "search_news_sources", lambda _claim_text: {"articles_found": 0, "articles": []})
 
@@ -183,7 +192,11 @@ def test_verify_claim_no_history_newsapi_unavailable(monkeypatch) -> None:
             "top_credible_articles": [],
         },
     )
-    monkeypatch.setattr(route_module, "generate_evidence_summary", lambda _claim_text, _articles: "No matching high-credibility reports were found.")
+    monkeypatch.setattr(
+        route_module,
+        "generate_evidence_summary",
+        lambda _claim_text, _articles, output_language="en": "No matching high-credibility reports were found.",
+    )
     monkeypatch.setattr(route_module, "insert_verification_history", lambda **_kwargs: {"id": "vh_1"})
 
     def _raise_no_key(_claim_text: str):

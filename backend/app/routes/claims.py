@@ -147,6 +147,9 @@ def verify_claim(payload: VerifyClaimRequest) -> dict:
         "sources": localized_sources,
     }
 
+    if "score_breakdown" in verification_result:
+        response_payload["score_breakdown"] = verification_result["score_breakdown"]
+
     if "warning" in news_lookup:
         response_payload["warning"] = news_lookup["warning"]
 
@@ -215,6 +218,9 @@ def verify_claim_final(payload: FinalVerifyRequest) -> dict[str, Any]:
                 "sources": _extract_source_names(news_lookup.get("articles", [])),
                 "history_count": len(post_insert_history),
             }
+
+            if "score_breakdown" in verification_result:
+                response["score_breakdown"] = verification_result["score_breakdown"]
 
             if "warning" in news_lookup:
                 response["warning"] = news_lookup["warning"]

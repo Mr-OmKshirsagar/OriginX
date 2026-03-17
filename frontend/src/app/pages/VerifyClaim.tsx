@@ -296,7 +296,12 @@ export function VerifyClaim() {
 
   const articles: Article[] = verificationData?.sources?.length
     ? verificationData.sources.map((source, index) => {
-        const similarityRaw = typeof source.similarity_score === 'number' ? source.similarity_score : 45;
+        const similarityRaw =
+          typeof source.semantic_relevance_score === 'number'
+            ? source.semantic_relevance_score
+            : typeof source.similarity_score === 'number'
+              ? source.similarity_score
+              : 45;
         const similarity = similarityRaw > 1 ? similarityRaw / 100 : similarityRaw;
 
         return {
