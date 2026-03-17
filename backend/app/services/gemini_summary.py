@@ -7,6 +7,22 @@ from app.config import settings
 
 _GEMINI_API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
 
+_LANGUAGE_LABELS: dict[str, str] = {
+    "en": "English",
+    "hi": "Hindi",
+    "mr": "Marathi",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "bn": "Bengali",
+    "kn": "Kannada",
+    "ml": "Malayalam",
+    "gu": "Gujarati",
+    "pa": "Punjabi",
+}
+
 
 def _normalize_output_language(output_language: str | None) -> str:
     normalized = (output_language or "en").strip().lower()
@@ -14,15 +30,59 @@ def _normalize_output_language(output_language: str | None) -> str:
         return "hi"
     if normalized in {"mr", "marathi"}:
         return "mr"
-    return "en"
+    aliases = {
+        "spanish": "es",
+        "french": "fr",
+        "german": "de",
+        "tamil": "ta",
+        "telugu": "te",
+        "bengali": "bn",
+        "kannada": "kn",
+        "malayalam": "ml",
+        "gujarati": "gu",
+        "punjabi": "pa",
+        "english": "en",
+    }
+    normalized = aliases.get(normalized, normalized)
+    return normalized if normalized in _LANGUAGE_LABELS else "en"
 
 
 def _language_label(output_language: str) -> str:
-    if output_language == "hi":
-        return "Hindi"
-    if output_language == "mr":
-        return "Marathi"
-    return "English"
+    return _LANGUAGE_LABELS.get(output_language, "English")
+
+
+def _build_article_evidence_snippets(top_articles: list[dict[str, Any]]) -> list[str]:
+    snippets: list[str] = []
+    for article in top_articles[:3]:
+        source = str(article.get("source", "Unknown source")).strip() or "Unknown source"
+        title = str(article.get("title", "")).strip()
+        description = str(article.get("description", "")).strip()
+        if title and description:
+            snippets.append(f"{source}: {title}. {description}")
+        elif title:
+            snippets.append(f"{source}: {title}")
+        elif description:
+            snippets.append(f"{source}: {description}")
+    return snippets
+
+
+def _looks_like_raw_or_structured_output(text: str) -> bool:
+    normalized = text.strip().lower()
+    if not normalized:
+        return True
+    signals = [
+        "source:",
+        "title:",
+        "description:",
+        "similarity:",
+        "http://",
+        "https://",
+        "[",
+        "{",
+    ]
+    signal_hits = sum(1 for marker in signals if marker in normalized)
+    # Structured dumps often include many line breaks and key:value markers.
+    return signal_hits >= 2 or normalized.count("\n") >= 4
 
 
 def _localized_article_defaults(language: str, index: int) -> tuple[str, str, str]:
@@ -161,6 +221,20 @@ def _fallback_summary(top_articles: list[dict[str, Any]], output_language: str =
             return "सारांश तयार करण्यासाठी उच्च-विश्वासार्हता आणि उच्च-साम्य असलेली बातमी उपलब्ध नव्हती."
         return "No high-credibility, high-similarity news was available for summary generation."
 
+    evidence_snippets = _build_article_evidence_snippets(top_articles)
+    if evidence_snippets:
+        if language == "hi":
+            return (
+                f"इस दावे के लिए {len(evidence_snippets)} प्रमुख स्रोतों की समीक्षा की गई। "
+                + " ".join(evidence_snippets)
+            )
+        if language == "mr":
+            return (
+                f"या दाव्यासाठी {len(evidence_snippets)} प्रमुख स्रोतांचे परीक्षण करण्यात आले. "
+                + " ".join(evidence_snippets)
+            )
+        return " ".join(evidence_snippets)
+
     if language == "hi":
         return (
             f"इस दावे के लिए {len(top_articles[:3])} उच्च-विश्वसनीयता स्रोतों की समीक्षा की गई। "
@@ -171,20 +245,6 @@ def _fallback_summary(top_articles: list[dict[str, Any]], output_language: str =
             f"या दाव्यासाठी {len(top_articles[:3])} उच्च-विश्वासार्ह स्रोतांचे परीक्षण करण्यात आले. "
             "उपलब्ध पुराव्यांच्या आधारे मुख्य निष्कर्ष संकलित केले आहेत."
         )
-
-    parts: list[str] = []
-    for article in top_articles[:3]:
-        source = str(article.get("source", "Unknown source")).strip() or "Unknown source"
-        title = str(article.get("title", "")).strip()
-        description = str(article.get("description", "")).strip()
-        if title and description:
-            parts.append(f"{source}: {title}. {description}")
-        elif title:
-            parts.append(f"{source}: {title}")
-        elif description:
-            parts.append(f"{source}: {description}")
-    if parts:
-        return " ".join(parts)
 
     if language == "hi":
         return "उच्च-विश्वसनीयता वाले लेख मिले, लेकिन विवरण सीमित थे।"
@@ -262,4 +322,8 @@ def generate_evidence_summary(claim_text: str, top_articles: list[dict[str, Any]
     if not text_segments:
         return _fallback_summary(top_articles, language)
 
-    return "\n".join(text_segments)
+    summary = "\n".join(text_segments).strip()
+    if _looks_like_raw_or_structured_output(summary):
+        return _fallback_summary(top_articles, language)
+
+    return summary

@@ -544,7 +544,7 @@ export function VerifyClaim() {
   ];
 
   const summaryText = localizeBackendSummary(verificationData?.summary) || t('verifySummaryFallback');
-  const summaryParts = summaryText.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const summaryParts = summaryText.split(/(?<=[.!?।])\s+/).filter(Boolean);
 
   const explanationPoints = [
     {
