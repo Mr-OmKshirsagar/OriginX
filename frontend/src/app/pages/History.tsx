@@ -193,6 +193,7 @@ export function History() {
   const falseCount = historyData.filter((item) => item.status === 'likelyFalse').length;
   const uncertainCount = historyData.filter((item) => item.status === 'uncertain').length;
   const accuracyRate = historyData.length ? `${((trueCount / historyData.length) * 100).toFixed(1)}%` : '0.0%';
+  const isInitialHistoryLoad = isLoadingHistory && !historyData.length;
 
   return (
     <div className={`min-h-screen transition-all duration-300 ${isDarkMode ? 'bg-[#0B1120]' : 'bg-[#F8FAFC]'}`}>
@@ -211,6 +212,12 @@ export function History() {
             <p className={`text-sm mt-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
               {t('historyLiveSync', { seconds: refreshIntervalSeconds })}
             </p>
+            {isLoadingHistory && historyData.length > 0 && (
+              <div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-[#22D3EE]/20 bg-[#22D3EE]/10 px-3 py-1.5">
+                <div className="h-3.5 w-3.5 rounded-full border-2 border-[#22D3EE]/30 border-t-[#22D3EE] animate-spin" />
+                <span className="text-xs text-[#22D3EE]">{t('historyLoading')}</span>
+              </div>
+            )}
           </div>
 
           {historyError && (
@@ -219,11 +226,52 @@ export function History() {
             </div>
           )}
 
-          {isLoadingHistory && !historyData.length && (
-            <div className={`mb-6 rounded-2xl border px-4 py-3 text-sm ${isDarkMode ? 'border-[#334155] bg-[#0F172A] text-[#93C5FD]' : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]'}`}>
-              {t('historyLoading')}
-            </div>
+          {isInitialHistoryLoad && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`rounded-[28px] border p-8 shadow-sm transition-colors ${
+                isDarkMode
+                  ? 'bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(30,41,59,0.92))] border-white/8 shadow-[0_28px_80px_rgba(2,6,23,0.5)]'
+                  : 'bg-white border-[#E2E8F0]'
+              }`}
+            >
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('historyTitle')}</p>
+                  <h2 className={`text-2xl mb-3 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('historyLoading')}</h2>
+                  <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>{t('historySubtitle')}</p>
+                </div>
+
+                <div className="flex items-center gap-3 rounded-2xl border border-[#22D3EE]/20 bg-[#22D3EE]/10 px-5 py-4">
+                  <div className="h-10 w-10 rounded-full border-2 border-[#22D3EE]/30 border-t-[#22D3EE] animate-spin" />
+                  <div>
+                    <p className="text-sm text-[#22D3EE]">{t('historyLiveSync', { seconds: refreshIntervalSeconds })}</p>
+                    <p className={`text-xs ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('historyLoading')}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[1, 2, 3].map((index) => (
+                  <div
+                    key={index}
+                    className={`rounded-2xl border p-5 animate-pulse ${
+                      isDarkMode ? 'bg-white/5 border-white/8' : 'bg-[#F8FAFC] border-[#E2E8F0]'
+                    }`}
+                  >
+                    <div className={`h-3 w-28 rounded-full mb-4 ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                    <div className={`h-8 w-20 rounded-full mb-4 ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                    <div className={`h-3 w-full rounded-full mb-2 ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                    <div className={`h-3 w-4/5 rounded-full ${isDarkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                  </div>
+                ))}
+              </div>
+            </motion.div>
           )}
+
+          {!isInitialHistoryLoad && (
+            <>
 
           <div className={`rounded-2xl border p-6 mb-6 transition-all duration-300 ${
             isDarkMode
@@ -559,6 +607,8 @@ export function History() {
               </div>
             </div>
           </div>
+            </>
+          )}
         </div>
       </div>
     </div>

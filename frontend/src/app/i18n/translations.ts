@@ -358,7 +358,7 @@ const en: TranslationMap = {
   verifyResultSubtitle: 'High-clarity intelligence summary built for fact-checkers, newsroom researchers, and trust and safety teams.',
   verifyAiDashboardLabel: 'OriginX AI Verification Dashboard',
   verifyAnalyzedClaim: 'Analyzed Claim',
-  verifyCredibilityMeterTitle: 'Hollow shield confidence meter',
+  verifyCredibilityMeterTitle: 'Hollow Shield Confidence Meter',
   verifyVerdictLabel: 'Verdict',
   verifyPrimarySignal: 'Primary Signal',
   verifyPrimarySignalFallback: 'High similarity across trusted publishers',

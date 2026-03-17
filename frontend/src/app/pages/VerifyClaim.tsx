@@ -1051,13 +1051,7 @@ export function VerifyClaim() {
                         <div className="flex items-center justify-between mb-5">
                           <div>
                             <p className={`text-xs uppercase tracking-[0.18em] mb-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyCredibilityVisualization')}</p>
-                            <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('verifyCredibilityMeterTitle')}</p>
-                          </div>
-                          <div
-                            className="rounded-full px-3 py-1 text-sm"
-                            style={{ backgroundColor: `${verificationVerdict.accent}18`, color: verificationVerdict.accent, boxShadow: `0 0 22px ${verificationVerdict.glow}` }}
-                          >
-                            {verificationVerdict.label}
+                            <h2 className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('verifyCredibilityMeterTitle')}</h2>
                           </div>
                         </div>
                         <div className="flex flex-col items-center justify-center gap-4 xl:flex-row xl:items-center xl:justify-between">
