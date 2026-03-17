@@ -148,7 +148,7 @@ export function UrlInvestigation() {
     return initialUrlFromState;
   });
   const [isInvestigating, setIsInvestigating] = useState(false);
-  const [showResults, setShowResults] = useState(Boolean(initialUrlFromState.trim()));
+  const [showResults, setShowResults] = useState(false);
   const [domainResult, setDomainResult] = useState<DomainSecurityResult | null>(null);
   const [investigationError, setInvestigationError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -157,53 +157,42 @@ export function UrlInvestigation() {
     const state = location.state as { initialUrl?: string } | null;
     if (state?.initialUrl) {
       setUrl(state.initialUrl);
-      setShowResults(true);
+      setShowResults(false);
+      setDomainResult(null);
     }
   }, [location.state]);
-
-  useEffect(() => {
-    if (!isInvestigating) return;
-
-    setShowResults(false);
-
-    const timeout = window.setTimeout(() => {
-      setIsInvestigating(false);
-      setShowResults(true);
-    }, 1200);
-
-    return () => window.clearTimeout(timeout);
-  }, [isInvestigating]);
 
   const runInvestigation = async () => {
     const trimmedUrl = url.trim();
     if (!trimmedUrl) {
+      setShowResults(false);
+      setDomainResult(null);
       setInvestigationError('Please enter a valid URL before starting investigation.');
       return;
     }
 
     setInvestigationError(null);
+    setIsInvestigating(true);
+    setShowResults(false);
 
     try {
       const domainResponse = await analyzeDomainSecurity({ url: trimmedUrl });
+      const firstResult = domainResponse.results[0] || null;
 
-      setDomainResult(domainResponse.results[0] || null);
+      setDomainResult(firstResult);
       setLastUpdated(new Date());
+      setShowResults(Boolean(firstResult));
+      if (!firstResult) {
+        setInvestigationError('No investigation data was returned for this URL. Please try another URL.');
+      }
     } catch (error) {
+      setDomainResult(null);
+      setShowResults(false);
       setInvestigationError(error instanceof Error ? error.message : 'Failed to connect to backend services.');
+    } finally {
+      setIsInvestigating(false);
     }
   };
-
-  useEffect(() => {
-    if (!showResults || isInvestigating || !url.trim()) return;
-
-    void runInvestigation();
-
-    const interval = window.setInterval(() => {
-      void runInvestigation();
-    }, 30000);
-
-    return () => window.clearInterval(interval);
-  }, [showResults, isInvestigating, url]);
 
   const domainRisk = domainResult?.domain_risk || 'unknown';
   const investigationScore = domainRisk === 'high' ? 22 : domainRisk === 'medium' ? 45 : domainRisk === 'low' ? 78 : 60;
@@ -371,10 +360,14 @@ export function UrlInvestigation() {
                     <Link2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
                     <input
                       value={url}
-                      onChange={(event) => setUrl(event.target.value)}
+                      onChange={(event) => {
+                        setUrl(event.target.value);
+                        setShowResults(false);
+                        setDomainResult(null);
+                        setInvestigationError(null);
+                      }}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter') {
-                          setIsInvestigating(true);
                           void runInvestigation();
                         }
                       }}
@@ -393,7 +386,6 @@ export function UrlInvestigation() {
                     whileHover={{ y: -3, scale: 1.01 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => {
-                      setIsInvestigating(true);
                       void runInvestigation();
                     }}
                     className="mt-4 inline-flex items-center gap-3 rounded-2xl px-8 py-4 text-white"

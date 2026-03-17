@@ -437,7 +437,7 @@ export function TrendingNews() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.08 }}
                       className={`relative overflow-hidden rounded-2xl border p-6 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg ${
-                        isDarkMode ? 'bg-[#111827] border-white/8' : 'bg-white border-[#E2E8F0]'
+                        isDarkMode ? 'bg-[#111827] border-white/8 hover:border-white/80' : 'bg-white border-[#E2E8F0] hover:border-white'
                       }`}
                     >
                       <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl" style={{ backgroundColor: metric.color }} />
