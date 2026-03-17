@@ -4,6 +4,17 @@ export interface VerificationSource {
   description?: string;
   url?: string;
   similarity_score?: number;
+  semantic_relevance_score?: number;
+  stance_label?: "supports" | "contradicts" | "related" | "unrelated";
+  stance_confidence?: number;
+  article_quality_score?: number;
+}
+
+export interface ScoreBreakdown {
+  mean_article_quality: number;
+  trusted_ratio: number;
+  support_ratio: number;
+  contradiction_ratio: number;
 }
 
 export interface VerifyClaimResponse {
@@ -16,6 +27,7 @@ export interface VerifyClaimResponse {
   summary: string;
   articles_found: number;
   sources: VerificationSource[];
+  score_breakdown?: ScoreBreakdown;
   warning?: string;
 }
 

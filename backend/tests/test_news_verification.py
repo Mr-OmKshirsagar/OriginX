@@ -1,5 +1,5 @@
 from app.config import settings
-from app.services.news_verification import fetch_trending_daily_news, search_news_sources
+from app.services.news_verification import _similarity_details, fetch_trending_daily_news, search_news_sources
 from requests import HTTPError, RequestException
 
 
@@ -46,6 +46,8 @@ def test_search_news_sources_success(monkeypatch) -> None:
     assert result["articles_found"] == 2
     assert result["articles"][0]["source"] == "Reuters"
     assert "similarity_score" in result["articles"][0]
+    assert "semantic_relevance_score" in result["articles"][0]
+    assert "stance_label" in result["articles"][0]
 
 
 def test_search_news_sources_missing_key(monkeypatch) -> None:
@@ -137,3 +139,19 @@ def test_fetch_trending_daily_news_classifies_general_when_no_specific_category(
     assert result["articles_found"] == 1
     assert result["articles"][0]["category"] == "general"
     assert "parliament" in result["articles"][0]["title"].lower()
+
+
+def test_similarity_details_downgrades_contradictory_match() -> None:
+    claim = "the who has officially declared a new global pandemic in 2026"
+    supportive = _similarity_details(
+        claim,
+        "WHO officially announced new pandemic measures for 2026 and confirmed the global advisory.",
+    )
+    contradictory = _similarity_details(
+        claim,
+        "WHO denies this rumor and says there is no evidence of a new global pandemic declaration in 2026.",
+    )
+
+    assert supportive["stance_label"] in {"supports", "related"}
+    assert contradictory["stance_label"] == "contradicts"
+    assert supportive["similarity_score"] > contradictory["similarity_score"]

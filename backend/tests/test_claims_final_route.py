@@ -20,6 +20,11 @@ def test_verify_claim_final_history_hit(monkeypatch) -> None:
             {"verification_result": "false"},
         ],
     )
+    monkeypatch.setattr(
+        route_module,
+        "generate_evidence_summary",
+        lambda _claim_text, _articles, output_language="en": "Authorities confirmed that the water supply is safe.",
+    )
 
     client = create_test_client()
     response = client.post(
@@ -82,7 +87,7 @@ def test_verify_claim_final_generates_and_stores(monkeypatch) -> None:
     monkeypatch.setattr(
         route_module,
         "generate_evidence_summary",
-        lambda _claim_text, _articles: "Authorities confirmed that the water supply is safe.",
+        lambda _claim_text, _articles, output_language="en": "Authorities confirmed that the water supply is safe.",
     )
 
     saved = {}
@@ -124,6 +129,11 @@ def test_verify_claim_final_with_propagation(monkeypatch) -> None:
                 "sources": [{"source": "Reuters"}],
             }
         ],
+    )
+    monkeypatch.setattr(
+        route_module,
+        "generate_evidence_summary",
+        lambda _claim_text, _articles, output_language="en": "Authorities confirmed that the water supply is safe.",
     )
     monkeypatch.setattr(
         route_module,

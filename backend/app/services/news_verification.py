@@ -15,6 +15,62 @@ _TRENDING_CACHE_TTL_SECONDS = 30 * 60
 _EMPTY_RESULT_CACHE_TTL_SECONDS = 60
 _GLOBAL_LOCAL_STORY_RATIO = 0.7
 
+_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "has",
+    "have",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "to",
+    "was",
+    "were",
+    "will",
+    "with",
+}
+
+_SUPPORT_CUES = {
+    "confirmed",
+    "confirms",
+    "verified",
+    "verify",
+    "officially",
+    "announced",
+    "evidence shows",
+    "reports",
+}
+
+_CONTRADICTION_CUES = {
+    "false",
+    "hoax",
+    "debunked",
+    "debunks",
+    "debunk",
+    "misleading",
+    "not true",
+    "no evidence",
+    "denies",
+    "denied",
+    "deny",
+    "refuted",
+    "unfounded",
+    "rumor",
+}
+
 _CATEGORY_KEYWORDS: dict[str, list[str]] = {
     "business": ["business", "economy", "economic", "market", "markets", "stock", "stocks", "finance", "financial", "trade", "bank", "banking", "investment", "inflation", "gdp", "tariff"],
     "entertainment": ["entertainment", "movie", "movies", "film", "films", "music", "celebrity", "celebrities", "tv", "television", "show", "shows", "streaming", "box office", "hollywood", "bollywood"],
@@ -429,19 +485,76 @@ def _fetch_region_rss(region_code: str, category: str | None) -> list[dict[str, 
 
 
 def _tokenize(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", text.lower()))
+    tokens = set(re.findall(r"[a-z0-9]+", text.lower()))
+    return {token for token in tokens if token not in _STOPWORDS and len(token) > 1}
 
 
-def _similarity_score(claim_text: str, article_text: str) -> int:
+def _bigrams(text: str) -> set[str]:
+    terms = [token for token in re.findall(r"[a-z0-9]+", text.lower()) if token not in _STOPWORDS and len(token) > 1]
+    return {f"{terms[index]} {terms[index + 1]}" for index in range(len(terms) - 1)}
+
+
+def _semantic_relevance_score(claim_text: str, article_text: str) -> int:
     claim_tokens = _tokenize(claim_text)
     article_tokens = _tokenize(article_text)
-
     if not claim_tokens or not article_tokens:
         return 0
 
-    overlap = len(claim_tokens.intersection(article_tokens))
-    score = int((overlap / len(claim_tokens)) * 100)
+    overlap = claim_tokens.intersection(article_tokens)
+    lexical_recall = len(overlap) / len(claim_tokens)
+    lexical_jaccard = len(overlap) / len(claim_tokens.union(article_tokens))
+
+    claim_bigrams = _bigrams(claim_text)
+    article_bigrams = _bigrams(article_text)
+    phrase_overlap = 0.0
+    if claim_bigrams and article_bigrams:
+        phrase_overlap = len(claim_bigrams.intersection(article_bigrams)) / len(claim_bigrams)
+
+    score = int(((0.65 * lexical_recall) + (0.25 * lexical_jaccard) + (0.10 * phrase_overlap)) * 100)
     return max(0, min(score, 100))
+
+
+def _detect_stance(claim_text: str, article_text: str) -> tuple[str, float]:
+    article_lower = article_text.lower()
+    claim_tokens = _tokenize(claim_text)
+    article_tokens = _tokenize(article_text)
+    overlap_count = len(claim_tokens.intersection(article_tokens))
+
+    has_support_cue = any(cue in article_lower for cue in _SUPPORT_CUES)
+    has_contradiction_cue = any(cue in article_lower for cue in _CONTRADICTION_CUES)
+
+    if overlap_count >= 2 and has_contradiction_cue:
+        return "contradicts", 0.85
+    if overlap_count >= 2 and has_support_cue:
+        return "supports", 0.75
+
+    relevance = _semantic_relevance_score(claim_text, article_text)
+    if relevance >= 60:
+        return "related", 0.6
+    if relevance >= 35:
+        return "related", 0.45
+    return "unrelated", 0.3
+
+
+def _similarity_details(claim_text: str, article_text: str) -> dict[str, Any]:
+    semantic_relevance_score = _semantic_relevance_score(claim_text, article_text)
+    stance_label, stance_confidence = _detect_stance(claim_text, article_text)
+
+    if stance_label == "contradicts":
+        adjusted_similarity = int(semantic_relevance_score * 0.4)
+    elif stance_label == "unrelated":
+        adjusted_similarity = int(semantic_relevance_score * 0.55)
+    elif stance_label == "supports":
+        adjusted_similarity = min(100, int(semantic_relevance_score + (stance_confidence * 20)))
+    else:
+        adjusted_similarity = semantic_relevance_score
+
+    return {
+        "similarity_score": max(0, min(adjusted_similarity, 100)),
+        "semantic_relevance_score": semantic_relevance_score,
+        "stance_label": stance_label,
+        "stance_confidence": round(stance_confidence, 2),
+    }
 
 
 def search_news_sources(claim_text: str) -> dict[str, Any]:
@@ -471,13 +584,14 @@ def search_news_sources(claim_text: str) -> dict[str, Any]:
         description = article.get("description") or ""
         source_name = (article.get("source") or {}).get("name") or "Unknown"
 
+        similarity_details = _similarity_details(claim_text, f"{title} {description}")
         articles.append(
             {
                 "source": source_name,
                 "title": title,
                 "description": description,
                 "url": article.get("url") or "",
-                "similarity_score": _similarity_score(claim_text, f"{title} {description}"),
+                **similarity_details,
             }
         )
 
