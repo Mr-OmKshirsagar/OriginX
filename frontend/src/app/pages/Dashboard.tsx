@@ -110,6 +110,30 @@ export function Dashboard() {
     return '#EF4444';
   };
 
+  const getTopicLabel = (topicName: string): string => {
+    const topicMap: Record<string, string> = {
+      'Politics': 'topicPolitics',
+      'Technology': 'topicTechnology',
+      'Science': 'topicScience',
+      'Health': 'topicHealth',
+      'Security': 'topicSecurity',
+      'Business': 'topicBusiness',
+      'Entertainment': 'topicEntertainment',
+      'Sports': 'topicSports',
+      'Economy': 'topicEconomy',
+    };
+    const key = topicMap[topicName];
+    return key ? t(key) : topicName;
+  };
+
+  const getVerificationStatusLabel = (status: string): string => {
+    const normalized = (status || '').toLowerCase().trim();
+    if (normalized.includes('false')) return t('historyStatusLikelyFalse');
+    if (normalized.includes('true')) return t('historyStatusLikelyTrue');
+    if (normalized.includes('uncertain')) return t('historyStatusUncertain');
+    return status;
+  };
+
   return (
     <div className={`min-h-screen transition-all duration-300 ${isDarkMode ? 'bg-[#0B1120]' : 'bg-[#F8FAFC]'}`}>
       <Sidebar />
@@ -249,7 +273,7 @@ export function Dashboard() {
                           <span>{t('commonSourcesCount', { count: verification.sources })}</span>
                           <span>•</span>
                           <span className="font-medium" style={{ color: getScoreColor(verification.score) }}>
-                            {verification.status}
+                            {getVerificationStatusLabel(verification.status)}
                           </span>
                         </div>
                       </div>
@@ -304,7 +328,7 @@ export function Dashboard() {
                             <TrendingDown className="w-4 h-4 text-[#EF4444]" />
                           )}
                         </div>
-                        <span className={`transition-colors group-hover:text-[#3B82F6] ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>{topic.topic}</span>
+                        <span className={`transition-colors group-hover:text-[#3B82F6] ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>{getTopicLabel(topic.topic)}</span>
                       </div>
                       <span className={`text-sm font-medium transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>{topic.count}</span>
                     </motion.div>
