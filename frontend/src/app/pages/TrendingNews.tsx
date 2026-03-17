@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Flame, Globe, ArrowUpRight, Clock3, RefreshCw, Timer } from 'lucide-react';
 import { Sidebar } from '../components/Sidebar';
 import { useDarkMode } from '../components/DarkModeContext';
+import { useLanguage } from '../components/LanguageContext';
 import { getTrendingNews, type TrendingNewsResponse } from '../services/api';
 
 interface TrendingNewsItem {
@@ -16,28 +17,28 @@ interface TrendingNewsItem {
   url: string;
 }
 
-const COUNTRY_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'global', label: 'Global (default)' },
-  { value: 'us', label: 'United States' },
-  { value: 'in', label: 'India' },
-  { value: 'gb', label: 'United Kingdom' },
-  { value: 'au', label: 'Australia' },
-  { value: 'ca', label: 'Canada' },
-  { value: 'de', label: 'Germany' },
-  { value: 'fr', label: 'France' },
-  { value: 'jp', label: 'Japan' },
-  { value: 'sg', label: 'Singapore' },
+const COUNTRY_OPTIONS: Array<{ value: string; labelKey: string }> = [
+  { value: 'global', labelKey: 'trendingCountryGlobal' },
+  { value: 'us', labelKey: 'trendingCountryUs' },
+  { value: 'in', labelKey: 'trendingCountryIn' },
+  { value: 'gb', labelKey: 'trendingCountryGb' },
+  { value: 'au', labelKey: 'trendingCountryAu' },
+  { value: 'ca', labelKey: 'trendingCountryCa' },
+  { value: 'de', labelKey: 'trendingCountryDe' },
+  { value: 'fr', labelKey: 'trendingCountryFr' },
+  { value: 'jp', labelKey: 'trendingCountryJp' },
+  { value: 'sg', labelKey: 'trendingCountrySg' },
 ];
 
-const CATEGORY_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'all', label: 'All Categories' },
-  { value: 'business', label: 'Business' },
-  { value: 'entertainment', label: 'Entertainment' },
-  { value: 'general', label: 'General' },
-  { value: 'health', label: 'Health' },
-  { value: 'science', label: 'Science' },
-  { value: 'sports', label: 'Sports' },
-  { value: 'technology', label: 'Technology' },
+const CATEGORY_OPTIONS: Array<{ value: string; labelKey: string }> = [
+  { value: 'all', labelKey: 'trendingCategoryAll' },
+  { value: 'business', labelKey: 'trendingCategoryBusiness' },
+  { value: 'entertainment', labelKey: 'trendingCategoryEntertainment' },
+  { value: 'general', labelKey: 'trendingCategoryGeneral' },
+  { value: 'health', labelKey: 'trendingCategoryHealth' },
+  { value: 'science', labelKey: 'trendingCategoryScience' },
+  { value: 'sports', labelKey: 'trendingCategorySports' },
+  { value: 'technology', labelKey: 'trendingCategoryTechnology' },
 ];
 
 const TRENDING_COUNTRY_STORAGE_KEY = 'originx.trending.country';
@@ -59,16 +60,16 @@ function detectCountryFromLocale(): string {
   return 'us';
 }
 
-function formatCountryName(countryCode: string): string {
+function formatCountryName(countryCode: string, locale: string, t: (key: string, params?: Record<string, string | number>) => string): string {
   const normalized = (countryCode || '').toLowerCase();
   const fromOptions = COUNTRY_OPTIONS.find((option) => option.value === normalized);
   if (fromOptions) {
-    return fromOptions.label;
+    return t(fromOptions.labelKey);
   }
 
   try {
     if (typeof Intl !== 'undefined' && typeof Intl.DisplayNames === 'function') {
-      const displayNames = new Intl.DisplayNames(['en'], { type: 'region' });
+      const displayNames = new Intl.DisplayNames([locale], { type: 'region' });
       const fullName = displayNames.of(normalized.toUpperCase());
       if (fullName) {
         return fullName;
@@ -129,8 +130,9 @@ async function detectCountryFromBrowserLocation(): Promise<string> {
 
 export function TrendingNews() {
   const { isDarkMode } = useDarkMode();
+  const { t, locale } = useLanguage();
   const [currentTime, setCurrentTime] = useState(() =>
-    new Intl.DateTimeFormat('en-US', {
+    new Intl.DateTimeFormat(locale, {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
@@ -146,10 +148,10 @@ export function TrendingNews() {
   const [detectedLocalCountry, setDetectedLocalCountry] = useState('us');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
-  const detectedLocalCountryName = formatCountryName(detectedLocalCountry);
+  const detectedLocalCountryName = formatCountryName(detectedLocalCountry, locale, t);
 
   useEffect(() => {
-    const formatter = new Intl.DateTimeFormat('en-US', {
+    const formatter = new Intl.DateTimeFormat(locale, {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
@@ -161,7 +163,7 @@ export function TrendingNews() {
     }, 1000);
 
     return () => window.clearInterval(intervalId);
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     let isMounted = true;
@@ -198,17 +200,17 @@ export function TrendingNews() {
 
   const formatPublishedAgo = (publishedAt: string) => {
     const parsed = new Date(publishedAt);
-    if (Number.isNaN(parsed.getTime())) return 'Recently published';
+    if (Number.isNaN(parsed.getTime())) return t('trendingRecentlyPublished');
 
     const minutes = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 60000));
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes} min ago`;
+    if (minutes < 1) return t('trendingJustNow');
+    if (minutes < 60) return t('trendingMinutesAgo', { minutes });
 
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
+    if (hours < 24) return t('trendingHoursAgo', { hours });
 
     const days = Math.floor(hours / 24);
-    return `${days}d ago`;
+    return t('trendingDaysAgo', { days });
   };
 
   const fetchLatestNews = async () => {
@@ -225,7 +227,7 @@ export function TrendingNews() {
       setNewsData(response);
       setLastRefresh(new Date());
     } catch (error) {
-      setNewsError(error instanceof Error ? error.message : 'Failed to load trending news.');
+      setNewsError(error instanceof Error ? error.message : t('trendingLoadError'));
     } finally {
       setIsLoadingNews(false);
     }
@@ -272,19 +274,22 @@ export function TrendingNews() {
 
   const metrics = [
     {
-      label: 'News Tracked',
+      id: 'news-tracked',
+      label: t('trendingMetricNewsTracked'),
       value: String(newsData?.articles_found || trendingNews.length || 0),
       icon: Flame,
       color: '#22C55E'
     },
     {
-      label: 'Regions Active',
+      id: 'regions-active',
+      label: t('trendingMetricRegionsActive'),
       value: String(new Set(trendingNews.map((item) => item.region)).size || 1),
       icon: Globe,
       color: '#22D3EE'
     },
     {
-      label: 'Avg Update Time',
+      id: 'avg-update',
+      label: t('trendingMetricAvgUpdate'),
       value: '30m',
       icon: Timer,
       color: '#EF4444'
@@ -301,6 +306,18 @@ export function TrendingNews() {
     technology: '#8B5CF6',
   };
 
+  const getCategoryLabel = (value: string) => {
+    const normalized = (value || '').toLowerCase();
+    if (normalized === 'business') return t('trendingCategoryBusiness');
+    if (normalized === 'entertainment') return t('trendingCategoryEntertainment');
+    if (normalized === 'general') return t('trendingCategoryGeneral');
+    if (normalized === 'health') return t('trendingCategoryHealth');
+    if (normalized === 'science') return t('trendingCategoryScience');
+    if (normalized === 'sports') return t('trendingCategorySports');
+    if (normalized === 'technology') return t('trendingCategoryTechnology');
+    return value;
+  };
+
   return (
     <div className={`min-h-screen transition-all duration-300 ${isDarkMode ? 'bg-[#0B1120]' : 'bg-[#F1F5F9]'}`}>
       <Sidebar />
@@ -315,11 +332,9 @@ export function TrendingNews() {
                 <Flame className="w-7 h-7 text-white" />
               </div>
               <div>
-                <h1 className={`text-3xl font-bold leading-tight ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
-                  Trending News
-                </h1>
+                <h1 className={`text-3xl font-bold leading-tight ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('trendingTitle')}</h1>
                 <p className={`text-sm mt-0.5 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
-                  Local priority: <span className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>{detectedLocalCountryName}</span> · Trusted publishers only
+                  {t('trendingSubtitle', { country: detectedLocalCountryName })}
                 </p>
               </div>
             </div>
@@ -333,9 +348,9 @@ export function TrendingNews() {
                 <Clock3 className="w-5 h-5 text-white" />
               </div>
               <div>
-                <p className={`text-xs uppercase tracking-widest ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Live Feed</p>
+                <p className={`text-xs uppercase tracking-widest ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('trendingLiveFeed')}</p>
                 <p className={`text-xl font-semibold tabular-nums ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{currentTime}</p>
-                {lastRefresh && <p className="text-xs text-[#22D3EE]">Refreshed {lastRefresh.toLocaleTimeString()}</p>}
+                {lastRefresh && <p className="text-xs text-[#22D3EE]">{t('trendingRefreshedAt', { time: lastRefresh.toLocaleTimeString() })}</p>}
               </div>
             </div>
           </div>
@@ -345,11 +360,11 @@ export function TrendingNews() {
             <div className="flex flex-col md:flex-row gap-4 items-end">
               <div className="flex-1">
                 <label htmlFor="trending-country" className={`block text-xs uppercase tracking-widest mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
-                  Country Scope
+                  {t('trendingCountryScope')}
                 </label>
                 <select
                   id="trending-country"
-                  title="Select country scope"
+                  title={t('trendingSelectCountryTitle')}
                   value={selectedCountry}
                   onChange={(event) => setSelectedCountry(event.target.value)}
                   className={`w-full rounded-xl border px-4 py-2.5 outline-none transition-all text-sm ${
@@ -359,17 +374,17 @@ export function TrendingNews() {
                   }`}
                 >
                   {COUNTRY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
+                    <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
                   ))}
                 </select>
               </div>
               <div className="flex-1">
                 <label htmlFor="trending-category" className={`block text-xs uppercase tracking-widest mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
-                  Category
+                  {t('trendingCategory')}
                 </label>
                 <select
                   id="trending-category"
-                  title="Select news category"
+                  title={t('trendingSelectCategoryTitle')}
                   value={selectedCategory}
                   onChange={(event) => setSelectedCategory(event.target.value)}
                   className={`w-full rounded-xl border px-4 py-2.5 outline-none transition-all text-sm ${
@@ -379,7 +394,7 @@ export function TrendingNews() {
                   }`}
                 >
                   {CATEGORY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
+                    <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
                   ))}
                 </select>
               </div>
@@ -395,11 +410,11 @@ export function TrendingNews() {
                       ? 'border-[#3B82F6]/30 bg-[#3B82F6]/10 text-[#93C5FD] hover:bg-[#3B82F6]/20 hover:border-[#3B82F6]/50'
                       : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#2563EB] hover:bg-[#DBEAFE]'
                 }`}
-                title="Refresh trending feed"
-                aria-label="Refresh trending feed"
+                title={t('trendingRefreshTitle')}
+                aria-label={t('trendingRefreshAria')}
               >
                 <RefreshCw className={`w-4 h-4 ${isLoadingNews ? 'animate-spin' : ''}`} />
-                {isLoadingNews ? 'Refreshing…' : 'Refresh'}
+                {isLoadingNews ? t('trendingRefreshing') : t('trendingRefresh')}
               </button>
             </div>
           </div>
@@ -413,7 +428,7 @@ export function TrendingNews() {
           {!!newsData && (
             <div className={`mb-6 flex items-center gap-2 rounded-2xl border px-5 py-3 text-sm ${isDarkMode ? 'bg-[#111827] border-white/8 text-[#64748B]' : 'bg-white border-[#E2E8F0] text-[#94A3B8]'}`}>
               <div className="w-2 h-2 rounded-full bg-[#22C55E] animate-pulse" />
-              <span><span className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{newsData.articles_found}</span> stories loaded · <span className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{newsData.skipped_untrusted_count}</span> non-trusted skipped</span>
+              <span>{t('trendingStoriesSummary', { loaded: newsData.articles_found, skipped: newsData.skipped_untrusted_count })}</span>
             </div>
           )}
 
@@ -429,7 +444,7 @@ export function TrendingNews() {
                 ))
               : metrics.map((metric, index) => {
                   const Icon = metric.icon;
-                  const isAvgUpdateMetric = metric.label === 'Avg Update Time';
+                  const isAvgUpdateMetric = metric.id === 'avg-update';
                   return (
                     <motion.div
                       key={metric.label}
@@ -482,7 +497,7 @@ export function TrendingNews() {
 
             {!isLoadingNews && !trendingNews.length && !newsError && (
               <div className={`rounded-2xl border p-8 text-center ${isDarkMode ? 'bg-[#111827] border-white/8 text-[#64748B]' : 'bg-white border-[#E2E8F0] text-[#94A3B8]'}`}>
-                No trending stories for the selected region.
+                {t('trendingNoStories')}
               </div>
             )}
 
@@ -524,7 +539,7 @@ export function TrendingNews() {
                           <div className="flex flex-wrap items-center gap-2">
                             {/* Category chip */}
                             <span className="text-xs font-medium px-2.5 py-1 rounded-full" style={{ backgroundColor: `${catColor}18`, color: catColor }}>
-                              {item.category}
+                              {getCategoryLabel(item.category)}
                             </span>
                             {/* Source */}
                             <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${isDarkMode ? 'bg-white/8 text-[#94A3B8]' : 'bg-[#F1F5F9] text-[#64748B]'}`}>
@@ -559,7 +574,7 @@ export function TrendingNews() {
             {trendingNews.length > 0 && (
               <div className="mt-6 flex items-center justify-between">
                 <p className={`text-sm ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
-                  {startIndex + 1}–{Math.min(startIndex + itemsPerPage, trendingNews.length)} of {trendingNews.length} stories
+                  {t('trendingRangeSummary', { from: startIndex + 1, to: Math.min(startIndex + itemsPerPage, trendingNews.length), total: trendingNews.length })}
                 </p>
 
                 <div className="flex items-center gap-1.5">
@@ -572,7 +587,7 @@ export function TrendingNews() {
                         : isDarkMode ? 'bg-white/8 text-[#94A3B8] hover:bg-white/12 hover:text-white' : 'bg-white border border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]'
                     }`}
                   >
-                    ← Prev
+                    {`<- ${t('trendingPrev')}`}
                   </button>
 
                   {Array.from({ length: totalPages }, (_, i) => {
@@ -602,7 +617,7 @@ export function TrendingNews() {
                         : isDarkMode ? 'bg-white/8 text-[#94A3B8] hover:bg-white/12 hover:text-white' : 'bg-white border border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]'
                     }`}
                   >
-                    Next →
+                    {`${t('trendingNext')} ->`}
                   </button>
                 </div>
               </div>

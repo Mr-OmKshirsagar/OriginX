@@ -2,13 +2,33 @@ import { Link, useLocation } from 'react-router';
 import { useMemo, useState, useEffect } from 'react';
 import { LayoutDashboard, Search, History, Settings, Sparkles, Moon, Sun, Newspaper, Link2 } from 'lucide-react';
 import { useDarkMode } from './DarkModeContext';
+import { useLanguage } from './LanguageContext';
 import { getMonthlyVerificationCount } from '../services/api';
 
 export function Sidebar() {
   const location = useLocation();
   const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const { t, locale } = useLanguage();
   const [monthlyCount, setMonthlyCount] = useState<number | null>(null);
   const [monthLabel, setMonthLabel] = useState('');
+
+  const formatMonthLabel = (rawLabel: string): string => {
+    const trimmed = rawLabel.trim();
+    if (!trimmed) return '';
+
+    const normalized = /^\d{4}-\d{2}$/.test(trimmed)
+      ? `${trimmed}-01`
+      : /^[A-Za-z]+\s+\d{4}$/.test(trimmed)
+        ? `${trimmed} 1`
+        : trimmed;
+
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) {
+      return trimmed;
+    }
+
+    return parsed.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -28,13 +48,13 @@ export function Sidebar() {
   }, []);
   
   const navItems = useMemo(() => [
-    { id: 'nav-dashboard', icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-    { id: 'nav-trending', icon: Newspaper, label: 'Trending News', path: '/trending' },
-    { id: 'nav-verify', icon: Search, label: 'Verify Claim', path: '/verify' },
-    { id: 'nav-history', icon: History, label: 'Verification History', path: '/history' },
-    { id: 'nav-url-investigation', icon: Link2, label: 'URL Investigation', path: '/url-investigation' },
-    { id: 'nav-settings', icon: Settings, label: 'Settings', path: '/settings' },
-  ], []);
+    { id: 'nav-dashboard', icon: LayoutDashboard, label: t('navDashboard'), path: '/dashboard' },
+    { id: 'nav-trending', icon: Newspaper, label: t('navTrending'), path: '/trending' },
+    { id: 'nav-verify', icon: Search, label: t('navVerify'), path: '/verify' },
+    { id: 'nav-history', icon: History, label: t('navHistory'), path: '/history' },
+    { id: 'nav-url-investigation', icon: Link2, label: t('navUrlInvestigation'), path: '/url-investigation' },
+    { id: 'nav-settings', icon: Settings, label: t('navSettings'), path: '/settings' },
+  ], [t]);
   
   return (
     <div className={`h-screen w-64 border-r fixed left-0 top-0 flex flex-col transition-all duration-300 ${
@@ -47,7 +67,7 @@ export function Sidebar() {
           </div>
           <span className={`text-xl font-semibold transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>OriginX</span>
         </Link>
-        <p className={`text-xs mt-1 transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#94A3B8]'}`}>Trace the Origin of Truth</p>
+        <p className={`text-xs mt-1 transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#94A3B8]'}`}>{t('appTagline')}</p>
       </div>
       
       <nav className="flex-1 p-4">
@@ -96,7 +116,7 @@ export function Sidebar() {
             ) : (
               <Sun className="w-5 h-5 text-[#FBBF24]" />
             )}
-            <span className="text-sm">{isDarkMode ? 'Dark Mode' : 'Light Mode'}</span>
+            <span className="text-sm">{isDarkMode ? t('darkMode') : t('lightMode')}</span>
           </span>
           <div className={`w-10 h-6 rounded-full p-1 transition-all duration-300 ${
             isDarkMode ? 'bg-gradient-to-r from-[#3B82F6] to-[#22D3EE]' : 'bg-[#CBD5E1]'
@@ -112,12 +132,12 @@ export function Sidebar() {
             ? 'bg-gradient-to-br from-[#3B82F6]/10 to-[#22D3EE]/10 border-[#3B82F6]/20 shadow-lg shadow-[#3B82F6]/5' 
             : 'bg-gradient-to-br from-[#3B82F6]/10 to-[#22D3EE]/10 border-[#3B82F6]/20'
         }`}>
-          <p className="text-xs text-[#22D3EE] mb-1 font-medium">Total Verifications</p>
+          <p className="text-xs text-[#22D3EE] mb-1 font-medium">{t('totalVerifications')}</p>
           <p className={`text-2xl font-bold transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>
-            {monthlyCount !== null ? monthlyCount.toLocaleString() : '—'}
+            {monthlyCount !== null ? monthlyCount.toLocaleString(locale) : '—'}
           </p>
           <p className={`text-xs mt-1 transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#94A3B8]'}`}>
-            {monthLabel ? `Completed in ${monthLabel}` : 'Completed this month'}
+            {monthLabel ? t('completedIn', { month: formatMonthLabel(monthLabel) }) : t('completedThisMonth')}
           </p>
         </div>
       </div>

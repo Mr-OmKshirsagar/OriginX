@@ -15,6 +15,15 @@ _TRENDING_CACHE_TTL_SECONDS = 30 * 60
 _EMPTY_RESULT_CACHE_TTL_SECONDS = 60
 _GLOBAL_LOCAL_STORY_RATIO = 0.7
 
+_CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "business": ["business", "economy", "economic", "market", "markets", "stock", "stocks", "finance", "financial", "trade", "bank", "banking", "investment", "inflation", "gdp", "tariff"],
+    "entertainment": ["entertainment", "movie", "movies", "film", "films", "music", "celebrity", "celebrities", "tv", "television", "show", "shows", "streaming", "box office", "hollywood", "bollywood"],
+    "health": ["health", "medical", "medicine", "hospital", "hospitals", "disease", "wellness", "vaccine", "vaccines", "virus", "mental health", "public health", "doctor", "doctors"],
+    "science": ["science", "research", "scientist", "scientists", "space", "physics", "biology", "chemistry", "climate study", "laboratory", "lab", "nasa", "experiment", "scientific"],
+    "sports": ["sport", "sports", "football", "cricket", "tennis", "olympic", "olympics", "league", "match", "tournament", "goal", "coach", "nba", "fifa", "ipl", "championship"],
+    "technology": ["technology", "tech", "ai", "artificial intelligence", "software", "device", "devices", "startup", "cyber", "cybersecurity", "app", "apps", "semiconductor", "chip", "chips", "smartphone", "internet", "robot"],
+}
+
 _GLOBAL_RSS_FEEDS: list[dict[str, str]] = [
     {"source": "Reuters", "url": "https://www.reuters.com/world/rss"},
     {"source": "BBC News", "url": "http://feeds.bbci.co.uk/news/world/rss.xml"},
@@ -314,25 +323,51 @@ def _first_text(node: ElementTree.Element, names: list[str]) -> str:
     return ""
 
 
-def _category_matches(category: str | None, title: str, description: str) -> bool:
+def _all_texts(node: ElementTree.Element, names: list[str]) -> list[str]:
+    values: list[str] = []
+    for child in node.iter():
+        tag = _strip_ns(child.tag)
+        if tag not in names:
+            continue
+
+        if tag == "link":
+            href = (child.attrib.get("href") or "").strip()
+            if href:
+                values.append(href)
+            continue
+
+        text = (child.text or "").strip()
+        if text:
+            values.append(text)
+
+    return values
+
+
+def _classify_article_category(title: str, description: str, extra_texts: list[str] | None = None) -> str:
+    blob = " ".join(part for part in [title, description, *(extra_texts or [])] if part).lower()
+    if not blob.strip():
+        return "general"
+
+    category_scores: dict[str, int] = {}
+    for category_name, keywords in _CATEGORY_KEYWORDS.items():
+        score = 0
+        for keyword in keywords:
+            if keyword in blob:
+                score += 1
+        if score > 0:
+            category_scores[category_name] = score
+
+    if not category_scores:
+        return "general"
+
+    return max(category_scores.items(), key=lambda item: item[1])[0]
+
+
+def _category_matches(category: str | None, title: str, description: str, extra_texts: list[str] | None = None) -> bool:
     if not category:
         return True
 
-    keywords = {
-        "business": ["business", "economy", "market", "stock", "finance", "trade"],
-        "entertainment": ["entertainment", "movie", "film", "music", "celebrity", "show"],
-        "general": ["news", "latest", "top"],
-        "health": ["health", "medical", "hospital", "disease", "wellness"],
-        "science": ["science", "research", "space", "physics", "biology"],
-        "sports": ["sport", "football", "cricket", "tennis", "olympic", "league"],
-        "technology": ["technology", "ai", "software", "device", "startup", "cyber"],
-    }.get(category, [])
-
-    if not keywords:
-        return True
-
-    blob = f"{title} {description}".lower()
-    return any(keyword in blob for keyword in keywords)
+    return _classify_article_category(title, description, extra_texts) == category
 
 
 def _fetch_feed_articles(feed: dict[str, str], region: str, category: str | None) -> list[dict[str, Any]]:
@@ -362,10 +397,12 @@ def _fetch_feed_articles(feed: dict[str, str], region: str, category: str | None
         description = _first_text(entry, ["description", "summary", "content"])
         link = _first_text(entry, ["link", "id"])
         published_at = _first_text(entry, ["pubDate", "published", "updated"])
+        feed_categories = _all_texts(entry, ["category", "term", "subject"])
+        detected_category = _classify_article_category(title, description, [feed["source"], *feed_categories])
 
         if not title:
             continue
-        if not _category_matches(category, title, description):
+        if category and detected_category != category:
             continue
 
         articles.append(
@@ -376,7 +413,7 @@ def _fetch_feed_articles(feed: dict[str, str], region: str, category: str | None
                 "url": link,
                 "published_at": published_at,
                 "region": region,
-                "category": category or "general",
+                "category": detected_category,
             }
         )
 
@@ -485,17 +522,23 @@ def fetch_trending_daily_news(
             if max_count is not None and added >= max_count:
                 break
             if {"source", "title", "description", "url", "published_at"}.issubset(article.keys()):
+                raw_title = str(article.get("title", "Untitled"))
+                raw_description = str(article.get("description", ""))
+                shaped_category = str(article.get("category") or _classify_article_category(raw_title, raw_description, [str(article.get("source", "Unknown"))]))
                 shaped = {
                     "source": str(article.get("source", "Unknown")),
-                    "title": str(article.get("title", "Untitled")),
-                    "description": str(article.get("description", "")),
+                    "title": raw_title,
+                    "description": raw_description,
                     "url": str(article.get("url", "")),
                     "published_at": str(article.get("published_at", "")),
                     "region": region,
-                    "category": response_category,
+                    "category": shaped_category,
                 }
             else:
                 shaped = _shape_trending_article(article, region=region, category=response_category)
+
+            if safe_category and shaped["category"] != safe_category:
+                continue
 
             if not _is_trusted_source(shaped["source"], region_code=region_code):
                 skipped_untrusted += 1

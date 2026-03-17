@@ -18,6 +18,10 @@ import {
   Bot,
   BadgeCheck,
   ScanSearch,
+  Play,
+  Pause,
+  Square,
+  Loader2,
   CalendarClock,
   FileBarChart2,
   Shield,
@@ -27,6 +31,9 @@ import { Sidebar } from '../components/Sidebar';
 import { CredibilityGauge } from '../components/CredibilityGauge';
 import { NetworkBackground } from '../components/NetworkBackground';
 import { useDarkMode } from '../components/DarkModeContext';
+import { useLanguage } from '../components/LanguageContext';
+import { speechSynthesisLocale } from '../i18n/config';
+import { analyzeRedditPropagation, verifyClaim, type RedditPropagationResponse, type VerifyClaimResponse } from '../services/api';
 import {
   analyzeRedditPropagation,
   extractTextFromImage,
@@ -229,6 +236,7 @@ export function VerifyClaim() {
   const initialClaim = navigationState?.claim || navigationState?.claimText || '';
   const shouldAutoAnalyze = Boolean((navigationState?.autoAnalyze || navigationState?.source === 'history') && initialClaim.trim());
   const { isDarkMode } = useDarkMode();
+  const { t, locale, language } = useLanguage();
   const navigate = useNavigate();
 
   const [claim, setClaim] = useState(initialClaim);
@@ -248,7 +256,51 @@ export function VerifyClaim() {
   const [isLoadingFacebook, setIsLoadingFacebook] = useState(false);
   const [isLoadingInstagram, setIsLoadingInstagram] = useState(false);
   const [isLoadingNews, setIsLoadingNews] = useState(false);
+  const [ttsStatus, setTtsStatus] = useState<'idle' | 'loading' | 'playing' | 'paused'>('idle');
   const resultsRef = useRef<HTMLDivElement>(null);
+  const ttsUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const isSpeechSynthesisSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+
+  const formatTimelineDate = (isoDate: string): string => {
+    const parsed = new Date(isoDate);
+    if (Number.isNaN(parsed.getTime())) return isoDate;
+    return parsed.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const normalizeText = (value: string): string => value.trim().toLowerCase();
+
+  const localizeBackendVerdict = (value?: string | null): string | null => {
+    if (!value) return null;
+    const normalized = normalizeText(value);
+    if (normalized.includes('unsupported') || normalized.includes('likely false') || normalized.includes('unverified') || normalized.includes('false')) {
+      return t('verifyVerdictLikelyFalseUnsupported');
+    }
+    if (normalized.includes('likely true') || normalized.includes('supported') || normalized.includes('verified') || normalized == 'true') {
+      return t('verifyVerdictLikelyTrueSupported');
+    }
+    if (normalized.includes('uncertain') || normalized.includes('mixed')) {
+      return t('historyStatusUncertain');
+    }
+    return value;
+  };
+
+  const localizeBackendSummary = (value?: string | null): string | null => {
+    if (!value) return null;
+    const normalized = normalizeText(value);
+    if (normalized.includes('no high-credibility') || normalized.includes('high-similarity news was available')) {
+      return t('verifySummaryNoHighCredibility');
+    }
+    return value;
+  };
+
+  const localizeBackendWarning = (value?: string | null): string | null => {
+    if (!value) return null;
+    if (language !== 'en') {
+      return t('verifyWarningGeneric');
+    }
+    return value;
+  };
 
   const articles: Article[] = verificationData?.sources?.length
     ? verificationData.sources.map((source, index) => {
@@ -257,11 +309,11 @@ export function VerifyClaim() {
 
         return {
           id: index + 1,
-          title: source.title || source.description || `Evidence item ${index + 1}`,
-          source: source.source || 'Unknown source',
+          title: source.title || source.description || t('verifyEvidenceItem', { index: index + 1 }),
+          source: source.source || t('verifyUnknownSource'),
           date: analyzedAt
-            ? analyzedAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-            : 'Live now',
+            ? analyzedAt.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' })
+            : t('verifyLiveNow'),
           similarity: Math.max(0, Math.min(similarity, 1)),
           url: source.url || '#',
           logo: '📰'
@@ -270,10 +322,10 @@ export function VerifyClaim() {
     : [];
 
   const timeline: TimelineEvent[] = [
-    { date: 'Jan 4, 2026', event: 'Initial online mention detected', source: 'Social Media' },
-    { date: 'Jan 5, 2026', event: 'First trusted verification published', source: 'Reuters' },
-    { date: 'Jan 6, 2026', event: 'Secondary confirmation and analysis', source: 'BBC' },
-    { date: 'Jan 7, 2026', event: 'Low-credibility amplification wave', source: 'Blogs & Aggregators' }
+    { date: formatTimelineDate('2026-01-04'), event: t('verifyTimelineEventInitialMention'), source: t('verifyTimelineSourceSocialMedia') },
+    { date: formatTimelineDate('2026-01-05'), event: t('verifyTimelineEventFirstTrusted'), source: t('verifyTimelineSourceReuters') },
+    { date: formatTimelineDate('2026-01-06'), event: t('verifyTimelineEventSecondaryConfirmation'), source: t('verifyTimelineSourceBBC') },
+    { date: formatTimelineDate('2026-01-07'), event: t('verifyTimelineEventAmplificationWave'), source: t('verifyTimelineSourceBlogs') }
   ];
 
   const averageSimilarity = articles.length
@@ -283,7 +335,7 @@ export function VerifyClaim() {
   const getAverageMatchMeta = (similarity: number) => {
     if (similarity >= 85) {
       return {
-        label: 'Fully Matching',
+        label: t('verifyAverageFullyMatching'),
         container: 'bg-gradient-to-br from-[#22C55E]/12 to-[#22C55E]/5 border-[#22C55E]/20',
         title: isDarkMode ? 'text-[#86EFAC]' : 'text-[#166534]',
         value: isDarkMode ? 'text-[#F0FDF4]' : 'text-[#14532D]'
@@ -292,7 +344,7 @@ export function VerifyClaim() {
 
     if (similarity >= 70) {
       return {
-        label: 'Mostly Matching',
+        label: t('verifyAverageMostlyMatching'),
         container: 'bg-gradient-to-br from-[#FBBF24]/12 to-[#FBBF24]/5 border-[#FBBF24]/20',
         title: isDarkMode ? 'text-[#FDE68A]' : 'text-[#A16207]',
         value: isDarkMode ? 'text-[#FFFBEB]' : 'text-[#854D0E]'
@@ -301,7 +353,7 @@ export function VerifyClaim() {
 
     if (similarity >= 40) {
       return {
-        label: 'Partially Matching',
+        label: t('verifyAveragePartiallyMatching'),
         container: 'bg-gradient-to-br from-[#F97316]/12 to-[#F97316]/5 border-[#F97316]/20',
         title: isDarkMode ? 'text-[#FDBA74]' : 'text-[#C2410C]',
         value: isDarkMode ? 'text-[#FFF7ED]' : 'text-[#9A3412]'
@@ -309,7 +361,7 @@ export function VerifyClaim() {
     }
 
     return {
-      label: 'Not Matching',
+      label: t('verifyAverageNotMatching'),
       container: 'bg-gradient-to-br from-[#EF4444]/12 to-[#EF4444]/5 border-[#EF4444]/20',
       title: isDarkMode ? 'text-[#FCA5A5]' : 'text-[#B91C1C]',
       value: isDarkMode ? 'text-[#FEF2F2]' : 'text-[#7F1D1D]'
@@ -319,7 +371,7 @@ export function VerifyClaim() {
   const getSimilarityMeta = (similarity: number) => {
     if (similarity >= 0.75) {
       return {
-        label: 'Strong Match',
+        label: t('verifyStrongMatch'),
         color: '#22C55E',
         background: isDarkMode ? 'bg-[#052E1A]' : 'bg-[#DCFCE7]',
         text: isDarkMode ? 'text-[#4ADE80]' : 'text-[#15803D]'
@@ -328,7 +380,7 @@ export function VerifyClaim() {
 
     if (similarity >= 0.5) {
       return {
-        label: 'Moderate Match',
+        label: t('verifyModerateMatch'),
         color: '#FBBF24',
         background: isDarkMode ? 'bg-[#3B2F08]' : 'bg-[#FEF3C7]',
         text: isDarkMode ? 'text-[#FCD34D]' : 'text-[#B45309]'
@@ -336,14 +388,14 @@ export function VerifyClaim() {
     }
 
     return {
-      label: 'Weak Match',
+      label: t('verifyWeakMatch'),
       color: '#EF4444',
       background: isDarkMode ? 'bg-[#3F0D15]' : 'bg-[#FEE2E2]',
       text: isDarkMode ? 'text-[#F87171]' : 'text-[#B91C1C]'
     };
   };
 
-  const analyzedTimestamp = new Intl.DateTimeFormat('en-US', {
+  const analyzedTimestamp = new Intl.DateTimeFormat(locale, {
     dateStyle: 'long',
     timeStyle: 'short'
   }).format(analyzedAt || new Date());
@@ -355,12 +407,12 @@ export function VerifyClaim() {
   const hasThreatSignal = suspiciousSources.length > 0 || credibilityScore < 50;
   const threatPanelTheme = hasThreatSignal
     ? {
-        eyebrow: 'Threat Intelligence',
-        headline: 'Suspicious Domain Detected',
-        description: 'This source has a low trust profile and matches known disinformation patterns. Our AI flagged critical security and credibility concerns.',
-        badge: 'HIGH RISK',
-        domainText: 'fakepoliticsnews.com',
-        statusText: 'SUSPICIOUS',
+        eyebrow: t('verifyThreatIntelligence'),
+        headline: t('verifyThreatHeadlineSuspicious'),
+        description: t('verifyThreatDescriptionSuspicious'),
+        badge: t('verifyThreatBadgeHighRisk'),
+        domainText: t('verifyThreatDomainRisk'),
+        statusText: t('verifyThreatStatusSuspicious'),
         score: 2,
         topBar: 'linear-gradient(90deg, #EF4444, #F97316, #CA8A04)',
         orbTop: 'rgba(239,68,68,0.12)',
@@ -389,12 +441,12 @@ export function VerifyClaim() {
         actionText: '#EF4444',
       }
     : {
-        eyebrow: 'Threat Intelligence',
-        headline: 'No Threat Signals Detected',
-        description: 'This source currently shows a healthy trust profile. Our AI did not detect critical security or credibility threats in the available evidence.',
-        badge: 'LOW RISK',
-        domainText: 'verified-safe-source.com',
-        statusText: 'SAFE',
+        eyebrow: t('verifyThreatIntelligence'),
+        headline: t('verifyThreatHeadlineSafe'),
+        description: t('verifyThreatDescriptionSafe'),
+        badge: t('verifyThreatBadgeLowRisk'),
+        domainText: t('verifyThreatDomainSafe'),
+        statusText: t('verifyThreatStatusSafe'),
         score: 8,
         topBar: 'linear-gradient(90deg, #22C55E, #10B981, #14B8A6)',
         orbTop: 'rgba(34,197,94,0.12)',
@@ -424,286 +476,290 @@ export function VerifyClaim() {
       };
   const ThreatPanelIcon = hasThreatSignal ? AlertTriangle : ShieldCheck;
 
-  const fallbackVerdict = credibilityScore >= 75 ? 'Likely true' : credibilityScore >= 50 ? 'Uncertain' : 'Likely false';
-  const verdictLabel = verificationData?.verdict || fallbackVerdict;
+  const fallbackVerdictLabel = credibilityScore >= 75
+    ? t('verifyFallbackVerdictTrue')
+    : credibilityScore >= 50
+      ? t('historyStatusUncertain')
+      : t('verifyFallbackVerdictFalse');
+  const verdictLabel = localizeBackendVerdict(verificationData?.verdict) || fallbackVerdictLabel;
 
   const verificationVerdict = credibilityScore >= 75
     ? {
         label: verdictLabel,
-        status: verificationData ? 'Live backend analysis' : 'Active Analysis',
+        status: verificationData ? t('verifyLiveBackendAnalysis') : t('verifyActiveAnalysis'),
         accent: '#22C55E',
         glow: 'rgba(34,197,94,0.18)',
-        badge: verificationData?.status === 'found' ? 'Served from verification history' : 'Multi-Source Verified'
+        badge: verificationData?.status === 'found' ? t('verifyServedHistory') : t('verifyMultiSourceVerified')
       }
     : credibilityScore >= 50
       ? {
           label: verdictLabel,
-          status: verificationData ? 'Live backend analysis' : 'Needs Review',
+          status: verificationData ? t('verifyLiveBackendAnalysis') : t('verifyNeedsReview'),
           accent: '#3B82F6',
           glow: 'rgba(59,130,246,0.18)',
-          badge: verificationData?.status === 'found' ? 'Served from verification history' : 'Mixed Signal Pattern'
+          badge: verificationData?.status === 'found' ? t('verifyServedHistory') : t('verifyMixedSignalPattern')
         }
       : {
           label: verdictLabel,
-          status: verificationData ? 'Live backend analysis' : 'High Risk Signal',
+          status: verificationData ? t('verifyLiveBackendAnalysis') : t('verifyHighRiskSignal'),
           accent: '#EF4444',
           glow: 'rgba(239,68,68,0.18)',
-          badge: verificationData?.status === 'found' ? 'Served from verification history' : 'Conflicting Evidence'
+          badge: verificationData?.status === 'found' ? t('verifyServedHistory') : t('verifyConflictingEvidence')
         };
 
   const trustIndicators = [
-    { icon: BadgeCheck, label: 'Multi-Source Verified', accent: '#22C55E' },
-    { icon: ScanSearch, label: 'High Similarity', accent: '#22D3EE' },
-    { icon: ShieldCheck, label: 'Trusted Publishers', accent: '#3B82F6' }
+    { icon: BadgeCheck, label: t('verifyMultiSourceVerified'), accent: '#22C55E' },
+    { icon: ScanSearch, label: t('verifyHighSimilarity'), accent: '#22D3EE' },
+    { icon: ShieldCheck, label: t('verifyTrustedPublishers'), accent: '#3B82F6' }
   ];
 
   const metricCards = [
     {
       icon: ShieldCheck,
-      label: 'Trusted Sources Found',
+      label: t('verifyTrustedSourcesFound'),
       value: trustedSources.length,
-      note: 'Live evidence from backend',
+      note: t('verifyLiveEvidenceBackend'),
       accent: '#22C55E',
       glow: 'rgba(34,197,94,0.18)'
     },
     {
       icon: ShieldAlert,
-      label: 'Suspicious Sources',
+      label: t('verifySuspiciousSources'),
       value: suspiciousSources.length,
-      note: 'Needs additional verification',
+      note: t('verifyNeedsAdditionalVerification'),
       accent: '#EF4444',
       glow: 'rgba(239,68,68,0.18)'
     },
     {
       icon: Clock3,
-      label: 'Verification Time',
+      label: t('verifyVerificationTime'),
       value: 2.3,
       decimals: 1,
       suffix: 's',
-      note: verificationData?.status === 'found' ? 'Served from cache/history' : 'Full backend pipeline completion',
+      note: verificationData?.status === 'found' ? t('verifyServedCacheHistory') : t('verifyFullBackendPipeline'),
       accent: '#22D3EE',
       glow: 'rgba(34,211,238,0.18)'
     },
     {
       icon: Bot,
-      label: 'AI Confidence Level',
+      label: t('verifyAiConfidenceLevel'),
       value: credibilityScore,
       suffix: '%',
-      note: 'Model certainty rating',
+      note: t('verifyModelCertainty'),
       accent: '#3B82F6',
       glow: 'rgba(59,130,246,0.18)'
     }
   ];
 
-  const summaryText = verificationData?.summary || 'Run analysis to get an AI-generated evidence summary from the backend.';
+  const summaryText = localizeBackendSummary(verificationData?.summary) || t('verifySummaryFallback');
   const summaryParts = summaryText.split(/(?<=[.!?])\s+/).filter(Boolean);
 
   const explanationPoints = [
     {
-      title: 'System summary insight',
+      title: t('verifySystemSummaryInsight'),
       body: summaryParts[0] || summaryText
     },
     {
-      title: 'Cross-source consistency',
-      body: summaryParts[1] || 'The system compares supporting coverage and computes consistency signals.'
+      title: t('verifyCrossSourceConsistency'),
+      body: summaryParts[1] || t('verifyCrossSourceConsistencyBody')
     },
     {
-      title: 'Conflicting evidence check',
-      body: summaryParts[2] || 'Lower-confidence sources are separated so reviewers can quickly inspect outliers.'
+      title: t('verifyConflictingEvidenceCheck'),
+      body: summaryParts[2] || t('verifyConflictingEvidenceBody')
     }
   ];
 
   const redditSpreadNodes = redditData?.analysis.spread_nodes ?? 0;
   const redditEventsCount = redditData?.events_count ?? 0;
-  const redditPatientZero = redditData?.analysis.patient_zero ?? 'No primary source identified';
-  const redditSuperSpreader = redditData?.analysis.super_spreader ?? 'No amplification leader detected';
+  const redditPatientZero = redditData?.analysis.patient_zero ?? t('verifyNoPrimarySource');
+  const redditSuperSpreader = redditData?.analysis.super_spreader ?? t('verifyNoAmplificationLeader');
 
   const platformSpreadTimelines = {
     reddit: {
-      eyebrow: 'Narrative Spread Timeline',
-      heading: 'Propagation Events',
+      eyebrow: t('verifyNarrativeSpreadTimeline'),
+      heading: t('verifyPropagationEvents'),
       events: [
         {
-          title: 'Claim Posted',
-          detail: 'Initial mention detected across Reddit discussion threads.',
-          time: '3 hours ago',
-          metric: '1 node',
+          title: t('verifyTimelineClaimPosted'),
+          detail: t('verifyTimelineClaimPostedDetail'),
+          time: t('verifyTimeHoursAgo', { n: 3 }),
+          metric: t('verifyMetricOneNode'),
           dotColor: '#FF4500',
           lineColor: '#FF4500'
         },
         {
-          title: 'Initial Spread',
-          detail: 'Discussion branched into adjacent subreddits and repost chains.',
-          time: '2 hours ago',
-          metric: '4 nodes',
+          title: t('verifyTimelineInitialSpread'),
+          detail: t('verifyTimelineInitialSpreadDetail'),
+          time: t('verifyTimeHoursAgo', { n: 2 }),
+          metric: t('verifyMetricNodes', { count: 4 }),
           dotColor: '#FFB366',
           lineColor: '#FFB366'
         },
         {
-          title: 'Peak Engagement',
-          detail: 'Amplification intensified as replies and reposts accelerated.',
-          time: '1 hour ago',
-          metric: '6 nodes',
+          title: t('verifyTimelinePeakEngagement'),
+          detail: t('verifyTimelinePeakEngagementDetail'),
+          time: t('verifyTimeOneHourAgo'),
+          metric: t('verifyMetricNodes', { count: 6 }),
           dotColor: '#FF8A5B',
           lineColor: '#FF8A5B'
         },
         {
-          title: 'Current Status',
-          detail: 'Monitoring remains active while fact-checking context is attached.',
-          time: 'Now',
-          metric: `${redditSpreadNodes || 11} total nodes tracked`,
+          title: t('verifyTimelineCurrentStatus'),
+          detail: t('verifyTimelineCurrentStatusDetailReddit'),
+          time: t('verifyNow'),
+          metric: t('verifyTotalNodesTracked', { count: redditSpreadNodes || 11 }),
           dotColor: '#FBBF24',
           lineColor: '#FBBF24'
         }
       ]
     },
     x: {
-      eyebrow: 'Narrative Spread Timeline',
-      heading: 'Post Velocity Across X',
+      eyebrow: t('verifyNarrativeSpreadTimeline'),
+      heading: t('verifyPostVelocityX'),
       events: [
         {
-          title: 'First Post Detected',
-          detail: 'The claim appeared in an early high-visibility post.',
-          time: '4 hours ago',
-          metric: '1 post',
+          title: t('verifyTimelineFirstPostDetected'),
+          detail: t('verifyTimelineFirstPostDetectedDetail'),
+          time: t('verifyTimeHoursAgo', { n: 4 }),
+          metric: t('verifyMetricOnePost'),
           dotColor: '#1DA1F2',
           lineColor: '#1DA1F2'
         },
         {
-          title: 'Retweet Burst',
-          detail: 'Shares accelerated through repost clusters and quote posts.',
-          time: '3 hours ago',
-          metric: '24 retweets',
+          title: t('verifyTimelineRetweetBurst'),
+          detail: t('verifyTimelineRetweetBurstDetail'),
+          time: t('verifyTimeHoursAgo', { n: 3 }),
+          metric: t('verifyMetricRetweets', { count: 24 }),
           dotColor: '#60A5FA',
           lineColor: '#60A5FA'
         },
         {
-          title: 'Reply Volume Rose',
-          detail: 'Conversation shifted from sharing into direct replies and debate.',
-          time: '90 minutes ago',
-          metric: '57 replies',
+          title: t('verifyTimelineReplyVolumeRose'),
+          detail: t('verifyTimelineReplyVolumeRoseDetail'),
+          time: t('verifyTimeMinutesAgo', { n: 90 }),
+          metric: t('verifyMetricReplies', { count: 57 }),
           dotColor: '#38BDF8',
           lineColor: '#38BDF8'
         },
         {
-          title: 'Current Status',
-          detail: 'Verification labels stabilized while engagement remains active.',
-          time: 'Now',
-          metric: '47 mentions live',
+          title: t('verifyTimelineCurrentStatus'),
+          detail: t('verifyTimelineCurrentStatusDetailX'),
+          time: t('verifyNow'),
+          metric: t('verifyMentionsLive', { count: 47 }),
           dotColor: '#22C55E',
           lineColor: '#22C55E'
         }
       ]
     },
     facebook: {
-      eyebrow: 'Narrative Spread Timeline',
-      heading: 'Community Distribution Flow',
+      eyebrow: t('verifyNarrativeSpreadTimeline'),
+      heading: t('verifyCommunityDistributionFlow'),
       events: [
         {
-          title: 'Initial Share',
-          detail: 'The claim entered Facebook through a public community page.',
-          time: '5 hours ago',
-          metric: '1 share',
+          title: t('verifyTimelineInitialShare'),
+          detail: t('verifyTimelineInitialShareDetail'),
+          time: t('verifyTimeHoursAgo', { n: 5 }),
+          metric: t('verifyMetricOneShare'),
           dotColor: '#1877F2',
           lineColor: '#1877F2'
         },
         {
-          title: 'Page-to-Group Spread',
-          detail: 'Posts moved from pages into private and regional groups.',
-          time: '3.5 hours ago',
-          metric: '28 shares',
+          title: t('verifyTimelinePageToGroupSpread'),
+          detail: t('verifyTimelinePageToGroupSpreadDetail'),
+          time: t('verifyTimeDecimalHoursAgo', { n: '3.5' }),
+          metric: t('verifyMetricShares', { count: 28 }),
           dotColor: '#60A5FA',
           lineColor: '#60A5FA'
         },
         {
-          title: 'Reaction Surge',
-          detail: 'Comments and reactions increased around mixed-source posts.',
-          time: '2 hours ago',
-          metric: '124 comments',
+          title: t('verifyTimelineReactionSurge'),
+          detail: t('verifyTimelineReactionSurgeDetail'),
+          time: t('verifyTimeHoursAgo', { n: 2 }),
+          metric: t('verifyMetricComments', { count: 124 }),
           dotColor: '#93C5FD',
           lineColor: '#93C5FD'
         },
         {
-          title: 'Current Status',
-          detail: 'Engagement is still spreading, but source quality remains mixed.',
-          time: 'Now',
-          metric: '89 shares tracked',
+          title: t('verifyTimelineCurrentStatus'),
+          detail: t('verifyTimelineCurrentStatusDetailFacebook'),
+          time: t('verifyNow'),
+          metric: t('verifySharesTracked', { count: 89 }),
           dotColor: '#EF4444',
           lineColor: '#EF4444'
         }
       ]
     },
     instagram: {
-      eyebrow: 'Narrative Spread Timeline',
-      heading: 'Visual Propagation Sequence',
+      eyebrow: t('verifyNarrativeSpreadTimeline'),
+      heading: t('verifyVisualPropagationSequence'),
       events: [
         {
-          title: 'Story Upload',
-          detail: 'The narrative first appeared through visual story content.',
-          time: '6 hours ago',
-          metric: '1 story',
+          title: t('verifyTimelineStoryUpload'),
+          detail: t('verifyTimelineStoryUploadDetail'),
+          time: t('verifyTimeHoursAgo', { n: 6 }),
+          metric: t('verifyMetricOneStory'),
           dotColor: '#E1306C',
           lineColor: '#E1306C'
         },
         {
-          title: 'Reel Reposts',
-          detail: 'Short-form reposts expanded the claim into adjacent audiences.',
-          time: '4 hours ago',
-          metric: '18 reposts',
+          title: t('verifyTimelineReelReposts'),
+          detail: t('verifyTimelineReelRepostsDetail'),
+          time: t('verifyTimeHoursAgo', { n: 4 }),
+          metric: t('verifyMetricReposts', { count: 18 }),
           dotColor: '#F472B6',
           lineColor: '#F472B6'
         },
         {
-          title: 'Comment Spike',
-          detail: 'Discussion volume rose as users debated caption accuracy.',
-          time: '2 hours ago',
-          metric: '421 comments',
+          title: t('verifyTimelineCommentSpike'),
+          detail: t('verifyTimelineCommentSpikeDetail'),
+          time: t('verifyTimeHoursAgo', { n: 2 }),
+          metric: t('verifyMetricComments', { count: 421 }),
           dotColor: '#FB7185',
           lineColor: '#FB7185'
         },
         {
-          title: 'Current Status',
-          detail: 'Monitoring continues across posts and visual derivatives.',
-          time: 'Now',
-          metric: '63 posts active',
+          title: t('verifyTimelineCurrentStatus'),
+          detail: t('verifyTimelineCurrentStatusDetailInstagram'),
+          time: t('verifyNow'),
+          metric: t('verifyPostsActive', { count: 63 }),
           dotColor: '#FBBF24',
           lineColor: '#FBBF24'
         }
       ]
     },
     news: {
-      eyebrow: 'Narrative Spread Timeline',
-      heading: 'Coverage Expansion Timeline',
+      eyebrow: t('verifyNarrativeSpreadTimeline'),
+      heading: t('verifyCoverageExpansionTimeline'),
       events: [
         {
-          title: 'First Pickup',
-          detail: 'Coverage started with an early outlet citing the claim.',
-          time: '8 hours ago',
-          metric: '1 article',
+          title: t('verifyTimelineFirstPickup'),
+          detail: t('verifyTimelineFirstPickupDetail'),
+          time: t('verifyTimeHoursAgo', { n: 8 }),
+          metric: t('verifyMetricOneArticle'),
           dotColor: '#FF6B00',
           lineColor: '#FF6B00'
         },
         {
-          title: 'Wire Distribution',
-          detail: 'Secondary outlets reproduced the narrative through syndication.',
-          time: '5 hours ago',
-          metric: '22 articles',
+          title: t('verifyTimelineWireDistribution'),
+          detail: t('verifyTimelineWireDistributionDetail'),
+          time: t('verifyTimeHoursAgo', { n: 5 }),
+          metric: t('verifyMetricArticles', { count: 22 }),
           dotColor: '#FB923C',
           lineColor: '#FB923C'
         },
         {
-          title: 'Tiered Coverage Split',
-          detail: 'Top-tier and mid-tier sources diverged in framing and certainty.',
-          time: '3 hours ago',
-          metric: '47 tier-1 mentions',
+          title: t('verifyTimelineTieredCoverageSplit'),
+          detail: t('verifyTimelineTieredCoverageSplitDetail'),
+          time: t('verifyTimeHoursAgo', { n: 3 }),
+          metric: t('verifyMetricTierOneMentions', { count: 47 }),
           dotColor: '#FDBA74',
           lineColor: '#FDBA74'
         },
         {
-          title: 'Current Status',
-          detail: 'Coverage remains broad, with verification strongest in major outlets.',
-          time: 'Now',
-          metric: '124 articles tracked',
+          title: t('verifyTimelineCurrentStatus'),
+          detail: t('verifyTimelineCurrentStatusDetailNews'),
+          time: t('verifyNow'),
+          metric: t('verifyArticlesTracked', { count: 124 }),
           dotColor: '#22C55E',
           lineColor: '#22C55E'
         }
@@ -712,16 +768,67 @@ export function VerifyClaim() {
   } as const;
 
   const explanationHeadline = credibilityScore >= 75
-    ? 'The claim aligns strongly with trusted reporting and the evidence pattern supports a credible verdict.'
+    ? t('verifyExplanationHeadlineHigh')
     : credibilityScore >= 50
-      ? 'The claim shows mixed evidence signals, so the result should be reviewed alongside the strongest sources.'
-      : 'The claim shows conflicting or weak source support, so it should be treated cautiously until stronger evidence appears.';
+      ? t('verifyExplanationHeadlineMedium')
+      : t('verifyExplanationHeadlineLow');
 
   const practicalTakeaway = credibilityScore >= 75
-    ? 'Practical takeaway: this claim has strong support across the highest-similarity sources, but final publication decisions should still consider source context and recency.'
+    ? t('verifyPracticalTakeawayHigh')
     : credibilityScore >= 50
-      ? 'Practical takeaway: use this as a review queue signal. Prioritize the strongest matching sources and inspect conflicting coverage before making a final trust decision.'
-      : 'Practical takeaway: treat this claim as high risk. Escalate to manual review and rely on trusted publishers before accepting or sharing the narrative.';
+      ? t('verifyPracticalTakeawayMedium')
+      : t('verifyPracticalTakeawayLow');
+
+  const aiSummarySpeechText = `${explanationHeadline}. ${summaryText}. ${practicalTakeaway}`;
+
+  const stopTts = () => {
+    if (!isSpeechSynthesisSupported) return;
+    window.speechSynthesis.cancel();
+    ttsUtteranceRef.current = null;
+    setTtsStatus('idle');
+  };
+
+  const playSummaryTts = () => {
+    if (!isSpeechSynthesisSupported) return;
+    if (!aiSummarySpeechText.trim()) return;
+
+    window.speechSynthesis.cancel();
+    setTtsStatus('loading');
+
+    const utterance = new SpeechSynthesisUtterance(aiSummarySpeechText);
+    utterance.lang = speechSynthesisLocale(language);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    utterance.onstart = () => setTtsStatus('playing');
+    utterance.onpause = () => setTtsStatus('paused');
+    utterance.onresume = () => setTtsStatus('playing');
+    utterance.onend = () => {
+      ttsUtteranceRef.current = null;
+      setTtsStatus('idle');
+    };
+    utterance.onerror = () => {
+      ttsUtteranceRef.current = null;
+      setTtsStatus('idle');
+    };
+
+    ttsUtteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const pauseTts = () => {
+    if (!isSpeechSynthesisSupported) return;
+    if (!window.speechSynthesis.speaking) return;
+    window.speechSynthesis.pause();
+    setTtsStatus('paused');
+  };
+
+  const resumeTts = () => {
+    if (!isSpeechSynthesisSupported) return;
+    window.speechSynthesis.resume();
+    setTtsStatus('playing');
+  };
 
   const hasPendingClaimChanges = Boolean(showResults && lastAnalyzedClaim.trim() && claim.trim() !== lastAnalyzedClaim.trim());
 
@@ -745,13 +852,14 @@ export function VerifyClaim() {
     setRedditError(null);
 
     try {
+      const response = await verifyClaim(claim.trim(), language);
       const response = await verifyClaim(normalizedClaim);
       setVerificationData(response);
       setAnalyzedAt(new Date());
       setLastAnalyzedClaim(normalizedClaim);
       setShowResults(true);
     } catch (error) {
-      setAnalysisError(error instanceof Error ? error.message : 'Failed to connect to backend.');
+      setAnalysisError(t('verifyBackendError'));
       setShowResults(false);
     } finally {
       setIsAnalyzing(false);
@@ -870,6 +978,19 @@ export function VerifyClaim() {
     return () => window.cancelAnimationFrame(frame);
   }, [showResults]);
 
+  useEffect(() => {
+    return () => {
+      if (!isSpeechSynthesisSupported) return;
+      window.speechSynthesis.cancel();
+    };
+  }, [isSpeechSynthesisSupported]);
+
+  useEffect(() => {
+    if (ttsStatus === 'playing' || ttsStatus === 'paused') {
+      stopTts();
+    }
+  }, [language, aiSummarySpeechText]);
+
   return (
     <div className={`min-h-screen transition-colors ${isDarkMode ? 'bg-[#0F172A]' : 'bg-[#F8FAFC]'}`}>
       <Sidebar />
@@ -882,9 +1003,9 @@ export function VerifyClaim() {
               <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${isDarkMode ? 'bg-[#1E293B] text-[#22D3EE]' : 'bg-[#EFF6FF] text-[#2563EB]'}`}>
                 <ScanSearch className="w-5 h-5" />
               </span>
-              Verify Claim
+              {t('verifyTitle')}
             </h1>
-            <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>Enter a news claim or upload an image to verify its authenticity</p>
+            <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>{t('verifySubtitle')}</p>
           </div>
 
           {/* Input Section */}
@@ -904,21 +1025,21 @@ export function VerifyClaim() {
                     <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${isDarkMode ? 'bg-[#1E293B] text-[#22D3EE]' : 'bg-[#EFF6FF] text-[#2563EB]'}`}>
                       <ShieldCheck className="w-4 h-4" />
                     </span>
-                    Credibility Visualization
+                    {t('verifyCredibilityVisualization')}
                   </p>
                 </div>
                 <div className={`rounded-full border px-3 py-1 text-xs ${isDarkMode ? 'border-white/10 bg-white/5 text-[#93C5FD]' : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]'}`}>
-                  Fact-check Assistant
+                  {t('verifyFactCheckAssistant')}
                 </div>
               </div>
 
               <div className={`rounded-2xl border p-3 ${isDarkMode ? 'bg-[#0A1226]/90 border-[#1E293B]' : 'bg-white/95 border-[#E2E8F0]'}`}>
-                <label className={`mb-2 block text-xs font-semibold uppercase tracking-[0.14em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Claim to Verify</label>
+                <label className={`mb-2 block text-xs font-semibold uppercase tracking-[0.14em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyClaimToVerify')}</label>
                 <textarea
                   value={claim}
                   onChange={(e) => setClaim(e.target.value)}
                   onKeyDown={handleClaimKeyDown}
-                  placeholder="Enter a news claim to verify..."
+                  placeholder={t('verifyClaimPlaceholder')}
                   className={`w-full resize-none rounded-xl border px-4 py-4 text-[15px] leading-relaxed outline-none transition-all focus:border-[#3B82F6] focus:ring-2 focus:ring-[#3B82F6]/20 ${
                     isDarkMode
                       ? 'bg-[#0B1120] border-[#1E293B] text-white placeholder:text-[#475569] focus:bg-[#0D1526]'
@@ -927,7 +1048,7 @@ export function VerifyClaim() {
                   rows={4}
                 />
                 <p className={`mt-2 text-xs ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
-                  Press Enter to analyze immediately. Use Shift+Enter for a new line.
+                  {t('verifyEnterHint')}
                 </p>
               </div>
 
@@ -937,7 +1058,7 @@ export function VerifyClaim() {
                     ? 'border-[#22D3EE]/25 bg-[#22D3EE]/10 text-[#BAE6FD]'
                     : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]'
                 }`}>
-                  The claim input changed. Run Analyze Claim to reload the verification UI with the new data.
+                  {t('verifyPendingChanges')}
                 </div>
               )}
 
@@ -950,18 +1071,18 @@ export function VerifyClaim() {
                   {isAnalyzing ? (
                     <>
                       <div className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                      <span>Analyzing...</span>
+                      <span>{t('verifyAnalyzing')}</span>
                     </>
                   ) : (
                     <>
                       <Sparkles className="h-5 w-5" />
-                      <span>Analyze Claim</span>
+                      <span>{t('verifyAnalyzeClaim')}</span>
                       <ArrowRight className="h-5 w-5" />
                     </>
                   )}
                 </button>
 
-                <div className={`hidden text-sm sm:block ${isDarkMode ? 'text-[#475569]' : 'text-[#CBD5E1]'}`}>or</div>
+                <div className={`hidden text-sm sm:block ${isDarkMode ? 'text-[#475569]' : 'text-[#CBD5E1]'}`}>{t('verifyOr')}</div>
 
                 <label className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border px-5 py-3 font-medium transition-all hover:border-[#3B82F6] hover:text-[#3B82F6] sm:w-auto ${
                   isDarkMode
@@ -969,7 +1090,7 @@ export function VerifyClaim() {
                     : 'border-[#E2E8F0] bg-[#F8FAFC] text-[#64748B] hover:bg-white'
                 }`}>
                   <Upload className="h-4 w-4" />
-                  <span>Upload Image</span>
+                  <span>{t('verifyUploadImage')}</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -987,7 +1108,7 @@ export function VerifyClaim() {
 
               {verificationData?.warning && (
                 <div className="mt-4 rounded-xl border border-[#F59E0B]/30 bg-[#F59E0B]/10 px-4 py-3 text-sm text-[#FCD34D]">
-                  {verificationData.warning}
+                  {localizeBackendWarning(verificationData.warning)}
                 </div>
               )}
             </div>
@@ -1016,11 +1137,11 @@ export function VerifyClaim() {
                     <div className="max-w-2xl">
                       <div className="inline-flex items-center gap-2 rounded-full border border-[#22D3EE]/25 bg-[#22D3EE]/10 px-4 py-1.5 mb-4">
                         <Sparkles className="w-4 h-4 text-[#22D3EE]" />
-                        <span className="text-sm text-[#22D3EE]">OriginX AI Verification Dashboard</span>
+                        <span className="text-sm text-[#22D3EE]">{t('verifyAiDashboardLabel')}</span>
                       </div>
-                      <h2 className={`text-2xl mb-3 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Verification Result</h2>
+                      <h2 className={`text-2xl mb-3 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyResultTitle')}</h2>
                       <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>
-                        High-clarity intelligence summary built for fact-checkers, newsroom researchers, and trust & safety teams.
+                        {t('verifyResultSubtitle')}
                       </p>
                     </div>
 
@@ -1051,7 +1172,7 @@ export function VerifyClaim() {
                       }`}>
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                           <div>
-                            <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Analyzed Claim</p>
+                            <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyAnalyzedClaim')}</p>
                             <p className={`text-lg leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{claim}</p>
                           </div>
                           <div className={`min-w-[220px] rounded-2xl border p-4 ${
@@ -1085,26 +1206,20 @@ export function VerifyClaim() {
                       }`}>
                         <div className="flex items-center justify-between mb-5">
                           <div>
-                            <p className={`text-xs uppercase tracking-[0.18em] mb-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Credibility Visualization</p>
-                            <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>Hollow shield confidence meter</p>
-                          </div>
-                          <div
-                            className="rounded-full px-3 py-1 text-sm"
-                            style={{ backgroundColor: `${verificationVerdict.accent}18`, color: verificationVerdict.accent, boxShadow: `0 0 22px ${verificationVerdict.glow}` }}
-                          >
-                            {verificationVerdict.label}
+                            <p className={`text-xs uppercase tracking-[0.18em] mb-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyCredibilityVisualization')}</p>
+                            <h2 className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('verifyCredibilityMeterTitle')}</h2>
                           </div>
                         </div>
                         <div className="flex flex-col items-center justify-center gap-4 xl:flex-row xl:items-center xl:justify-between">
                           <CredibilityGauge score={credibilityScore} isDarkMode={isDarkMode} />
                           <div className="w-full max-w-xs space-y-3">
                             <div className="rounded-2xl border border-white/8 bg-white/5 p-4 backdrop-blur-md">
-                              <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Verdict</p>
+                              <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyVerdictLabel')}</p>
                               <p className="text-2xl" style={{ color: verificationVerdict.accent }}>{verificationVerdict.label}</p>
                             </div>
                             <div className="rounded-2xl border border-white/8 bg-white/5 p-4 backdrop-blur-md">
-                              <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Primary Signal</p>
-                              <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{summaryParts[0] || 'High similarity across trusted publishers'}</p>
+                              <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyPrimarySignal')}</p>
+                              <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{summaryParts[0] || t('verifyPrimarySignalFallback')}</p>
                             </div>
                           </div>
                         </div>
@@ -1134,13 +1249,69 @@ export function VerifyClaim() {
 
               {/* AI Explanation */}
               <div className={`rounded-2xl border p-6 ${isDarkMode ? 'bg-[#111827] border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#3B82F6] to-[#22D3EE]">
-                    <Bot className="w-5 h-5 text-white" />
+                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#3B82F6] to-[#22D3EE]">
+                      <Bot className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className={`text-xs uppercase tracking-[0.18em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyExplanationSummary')}</p>
+                      <h2 className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('verifyAiExplanation')}</h2>
+                    </div>
                   </div>
-                  <div>
-                    <p className={`text-xs uppercase tracking-[0.18em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Explanation Summary</p>
-                    <h2 className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>AI Explanation</h2>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={playSummaryTts}
+                      disabled={!isSpeechSynthesisSupported || ttsStatus === 'loading' || ttsStatus === 'playing'}
+                      aria-label={t('verifyTtsPlay')}
+                      title={!isSpeechSynthesisSupported ? t('verifyTtsNotSupported') : t('verifyTtsPlay')}
+                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                        isDarkMode
+                          ? 'border-[#334155] bg-[#0F172A] text-[#93C5FD] hover:border-[#3B82F6] disabled:opacity-50 disabled:cursor-not-allowed'
+                          : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8] hover:border-[#60A5FA] disabled:opacity-50 disabled:cursor-not-allowed'
+                      }`}
+                    >
+                      {ttsStatus === 'loading' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                      <span>{t('verifyTtsPlay')}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={ttsStatus === 'paused' ? resumeTts : pauseTts}
+                      disabled={ttsStatus !== 'playing' && ttsStatus !== 'paused'}
+                      aria-label={ttsStatus === 'paused' ? t('verifyTtsResume') : t('verifyTtsPause')}
+                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                        isDarkMode
+                          ? 'border-[#334155] bg-[#0F172A] text-[#93C5FD] hover:border-[#3B82F6] disabled:opacity-50 disabled:cursor-not-allowed'
+                          : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8] hover:border-[#60A5FA] disabled:opacity-50 disabled:cursor-not-allowed'
+                      }`}
+                    >
+                      {ttsStatus === 'paused' ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+                      <span>{ttsStatus === 'paused' ? t('verifyTtsResume') : t('verifyTtsPause')}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={stopTts}
+                      disabled={ttsStatus === 'idle'}
+                      aria-label={t('verifyTtsStop')}
+                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                        isDarkMode
+                          ? 'border-[#334155] bg-[#0F172A] text-[#FCA5A5] hover:border-[#EF4444] disabled:opacity-50 disabled:cursor-not-allowed'
+                          : 'border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C] hover:border-[#EF4444] disabled:opacity-50 disabled:cursor-not-allowed'
+                      }`}
+                    >
+                      <Square className="h-3.5 w-3.5" />
+                      <span>{t('verifyTtsStop')}</span>
+                    </button>
+
+                    {(ttsStatus === 'playing' || ttsStatus === 'loading') && (
+                      <span className={`text-xs ${isDarkMode ? 'text-[#93C5FD]' : 'text-[#1D4ED8]'}`} role="status" aria-live="polite">
+                        {ttsStatus === 'loading' ? t('verifyTtsLoading') : t('verifyTtsSpeakingSummary')}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <motion.div
@@ -1151,21 +1322,21 @@ export function VerifyClaim() {
                   <div className="space-y-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div>
-                        <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#93C5FD]' : 'text-[#1D4ED8]'}`}>AI Verdict</p>
+                        <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#93C5FD]' : 'text-[#1D4ED8]'}`}>{t('verifyAiVerdict')}</p>
                         <h3 className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
                           {explanationHeadline}
                         </h3>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <span className="inline-flex items-center rounded-full border border-[#F59E0B]/20 bg-[#F59E0B]/10 px-3 py-1 text-xs text-[#F59E0B]">Confidence: {credibilityScore}%</span>
+                        <span className="inline-flex items-center rounded-full border border-[#F59E0B]/20 bg-[#F59E0B]/10 px-3 py-1 text-xs text-[#F59E0B]">{t('verifyConfidenceLabel', { score: credibilityScore })}</span>
                         <span
                           className="inline-flex items-center rounded-full border px-3 py-1 text-xs"
                           style={{ borderColor: `${verificationVerdict.accent}33`, color: verificationVerdict.accent, backgroundColor: `${verificationVerdict.accent}18` }}
                         >
-                          Verdict: {verificationVerdict.label}
+                          {t('verifyVerdictBadge', { verdict: verificationVerdict.label })}
                         </span>
-                        <span className="inline-flex items-center rounded-full border border-[#22C55E]/20 bg-[#22C55E]/10 px-3 py-1 text-xs text-[#22C55E]">Trusted Sources: {trustedSources.length}</span>
-                        <span className="inline-flex items-center rounded-full border border-[#EF4444]/20 bg-[#EF4444]/10 px-3 py-1 text-xs text-[#EF4444]">Conflicting Sources: {suspiciousSources.length}</span>
+                        <span className="inline-flex items-center rounded-full border border-[#22C55E]/20 bg-[#22C55E]/10 px-3 py-1 text-xs text-[#22C55E]">{t('verifyTrustedSourcesBadge', { count: trustedSources.length })}</span>
+                        <span className="inline-flex items-center rounded-full border border-[#EF4444]/20 bg-[#EF4444]/10 px-3 py-1 text-xs text-[#EF4444]">{t('verifyConflictingSourcesBadge', { count: suspiciousSources.length })}</span>
                       </div>
                     </div>
 
@@ -1200,25 +1371,25 @@ export function VerifyClaim() {
               }`}>
                 <div className="flex flex-col gap-3 mb-6 lg:flex-row lg:items-end lg:justify-between">
                   <div>
-                    <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Evidence Sources</p>
-                    <h2 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Source Intelligence Breakdown</h2>
+                    <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyEvidenceSources')}</p>
+                    <h2 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifySourceIntelligenceBreakdown')}</h2>
                   </div>
-                  <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>Verified publishers and suspicious amplifiers are separated for faster review.</p>
+                  <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>{t('verifyEvidenceSplitHint')}</p>
                 </div>
 
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                   <div className={`rounded-2xl border p-6 ${isDarkMode ? 'bg-[#0B1120]/80 border-[#22C55E]/20' : 'bg-[#F8FAFC] border-[#BBF7D0]'}`}>
                     <div className="flex items-center justify-between mb-5">
                       <div>
-                        <p className="text-sm text-[#22C55E]">Verified Trusted Sources</p>
-                        <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{trustedSources.length} publishers aligned</p>
+                        <p className="text-sm text-[#22C55E]">{t('verifyTrustedSourcesSection')}</p>
+                        <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('verifyTrustedSourcesAligned', { count: trustedSources.length })}</p>
                       </div>
                       <ShieldCheck className="w-5 h-5 text-[#22C55E]" />
                     </div>
                     <div className="space-y-4">
                       {trustedSources.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-10 text-center">
-                          <p className={`text-sm ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>No trusted sources found for this claim.</p>
+                          <p className={`text-sm ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyNoTrustedSources')}</p>
                         </div>
                       ) : trustedSources.map((article, index) => (
                         <motion.div
@@ -1241,12 +1412,12 @@ export function VerifyClaim() {
                             </div>
                             <div className="text-right">
                               <p className="text-2xl text-[#22C55E]">{Math.round(article.similarity * 100)}%</p>
-                              <p className="text-xs uppercase tracking-[0.16em] text-[#86EFAC]">Similarity</p>
+                              <p className="text-xs uppercase tracking-[0.16em] text-[#86EFAC]">{t('verifySimilarity')}</p>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <span className="rounded-full border border-[#22C55E]/20 bg-[#22C55E]/10 px-3 py-1 text-xs text-[#4ADE80]">Credibility {getSourceRating(article.similarity)}</span>
-                            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-[#94A3B8]">Published {article.date}</span>
+                            <span className="rounded-full border border-[#22C55E]/20 bg-[#22C55E]/10 px-3 py-1 text-xs text-[#4ADE80]">{t('verifyCredibilityLabel')} {getSourceRating(article.similarity)}</span>
+                            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-[#94A3B8]">{t('verifyPublishedLabel', { date: article.date })}</span>
                           </div>
                         </motion.div>
                       ))}
@@ -1256,15 +1427,15 @@ export function VerifyClaim() {
                   <div className={`rounded-2xl border p-6 ${isDarkMode ? 'bg-[#0B1120]/80 border-[#EF4444]/20' : 'bg-[#F8FAFC] border-[#FECACA]'}`}>
                     <div className="flex items-center justify-between mb-5">
                       <div>
-                        <p className="text-sm text-[#EF4444]">Suspicious or Low Credibility Sources</p>
-                        <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{suspiciousSources.length} amplifiers require caution</p>
+                        <p className="text-sm text-[#EF4444]">{t('verifySuspiciousSourcesSection')}</p>
+                        <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('verifySuspiciousSourcesCaution', { count: suspiciousSources.length })}</p>
                       </div>
                       <ShieldAlert className="w-5 h-5 text-[#EF4444]" />
                     </div>
                     <div className="space-y-4">
                       {suspiciousSources.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-10 text-center">
-                          <p className={`text-sm ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>No suspicious sources found for this claim.</p>
+                          <p className={`text-sm ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyNoSuspiciousSources')}</p>
                         </div>
                       ) : suspiciousSources.map((article, index) => (
                         <motion.div
@@ -1291,14 +1462,14 @@ export function VerifyClaim() {
                             </div>
                             <div className="text-right">
                               <p className={article.similarity >= 0.5 ? 'text-2xl text-[#FBBF24]' : 'text-2xl text-[#EF4444]'}>{Math.round(article.similarity * 100)}%</p>
-                              <p className={`text-xs uppercase tracking-[0.16em] ${article.similarity >= 0.5 ? 'text-[#FCD34D]' : 'text-[#FCA5A5]'}`}>Similarity</p>
+                              <p className={`text-xs uppercase tracking-[0.16em] ${article.similarity >= 0.5 ? 'text-[#FCD34D]' : 'text-[#FCA5A5]'}`}>{t('verifySimilarity')}</p>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <span className={`rounded-full border px-3 py-1 text-xs ${article.similarity >= 0.5 ? 'border-[#FBBF24]/20 bg-[#FBBF24]/10 text-[#FCD34D]' : 'border-[#EF4444]/20 bg-[#EF4444]/10 text-[#FCA5A5]'}`}>
-                              Credibility {getSourceRating(article.similarity)}
+                              {t('verifyCredibilityLabel')} {getSourceRating(article.similarity)}
                             </span>
-                            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-[#94A3B8]">Published {article.date}</span>
+                            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-[#94A3B8]">{t('verifyPublishedLabel', { date: article.date })}</span>
                           </div>
                         </motion.div>
                       ))}
@@ -1313,9 +1484,9 @@ export function VerifyClaim() {
               }`}>
                 <div className="flex flex-col gap-4 mb-8 lg:flex-row lg:items-end lg:justify-between">
                   <div>
-                    <h2 className={`text-xl mb-2 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Source Similarity Comparison</h2>
+                    <h2 className={`text-xl mb-2 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifySourceSimilarityComparison')}</h2>
                     <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>
-                      Compare how closely each source aligns with the core claim and supporting evidence.
+                      {t('verifySimilarityHint')}
                     </p>
                   </div>
 
@@ -1332,7 +1503,7 @@ export function VerifyClaim() {
                         target.style.borderColor = '#3B82F6' + '33';
                       }}
                     >
-                      <p className={`text-xs uppercase tracking-[0.18em] ${isDarkMode ? 'text-[#93C5FD]' : 'text-[#1D4ED8]'}`}>Sources Compared</p>
+                      <p className={`text-xs uppercase tracking-[0.18em] ${isDarkMode ? 'text-[#93C5FD]' : 'text-[#1D4ED8]'}`}>{t('verifySourcesCompared')}</p>
                       <p className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{articles.length}</p>
                     </div>
                     <div 
@@ -1360,7 +1531,7 @@ export function VerifyClaim() {
                         }
                       }}
                     >
-                      <p className={`text-xs uppercase tracking-[0.18em] ${getAverageMatchMeta(averageSimilarity).title}`}>Average Match</p>
+                      <p className={`text-xs uppercase tracking-[0.18em] ${getAverageMatchMeta(averageSimilarity).title}`}>{t('verifyAverageMatch')}</p>
                       <p className={`text-lg ${getAverageMatchMeta(averageSimilarity).value}`}>{averageSimilarity}%</p>
                       <p className={`text-xs mt-1 ${getAverageMatchMeta(averageSimilarity).title}`}>{getAverageMatchMeta(averageSimilarity).label}</p>
                     </div>
@@ -1370,7 +1541,7 @@ export function VerifyClaim() {
                 <div className="space-y-4">
                   {articles.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <p className={`text-sm ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>No articles available to compare for this claim.</p>
+                      <p className={`text-sm ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyNoArticlesToCompare')}</p>
                     </div>
                   ) : articles.map((article, index) => (
                     <motion.div
@@ -1404,7 +1575,7 @@ export function VerifyClaim() {
 
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-2">
-                            <span className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Similarity score</span>
+                            <span className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifySimilarityScore')}</span>
                             <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{article.similarity.toFixed(2)}</span>
                           </div>
                           <div className={`relative h-4 rounded-full overflow-hidden ${isDarkMode ? 'bg-[#111827]' : 'bg-white'}`}>
@@ -1426,7 +1597,7 @@ export function VerifyClaim() {
                             {(article.similarity * 100).toFixed(0)}%
                           </p>
                           <p className={`text-xs uppercase tracking-[0.14em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
-                            Match
+                            {t('verifyMatch')}
                           </p>
                         </div>
                       </div>
@@ -1441,10 +1612,10 @@ export function VerifyClaim() {
               }`}>
                 <div className="flex flex-col gap-3 mb-8 lg:flex-row lg:items-end lg:justify-between">
                   <div>
-                    <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Spread Pattern</p>
-                    <h2 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>News Timeline Visualization</h2>
+                    <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifySpreadPattern')}</p>
+                    <h2 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyNewsTimelineVisualization')}</h2>
                   </div>
-                  <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>Track the origin and amplification path from first mention to broader propagation.</p>
+                  <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>{t('verifyTimelineHint')}</p>
                 </div>
 
                 <div className="relative">
@@ -1495,7 +1666,7 @@ export function VerifyClaim() {
                       </div>
                       <div className="flex-1">
                         <p className={`text-xs font-semibold uppercase tracking-widest ${isDarkMode ? threatPanelTheme.eyebrowDark : threatPanelTheme.eyebrowLight}`}>
-                          {hasThreatSignal ? '⚠ ' : '✓ '}{threatPanelTheme.eyebrow}
+                          {hasThreatSignal ? '⚠ ' : '✓ '}{t('verifyThreatIntelligence')}
                         </p>
                         <h3 className={`mt-2 text-2xl font-bold leading-tight ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
                           {threatPanelTheme.headline}
@@ -1527,7 +1698,7 @@ export function VerifyClaim() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className={`text-xs font-semibold uppercase tracking-wider ${isDarkMode ? threatPanelTheme.metricMutedDark : threatPanelTheme.metricMutedLight}`}>
-                            Domain
+                            {t('verifyDomain')}
                           </p>
                           <p className="mt-2.5 truncate font-mono text-lg font-bold" style={{ color: threatPanelTheme.metricAccent }}>{threatPanelTheme.domainText}</p>
                         </div>
@@ -1545,7 +1716,7 @@ export function VerifyClaim() {
                         </div>
                         <div className="flex-1">
                           <p className={`text-xs font-semibold uppercase tracking-wider ${isDarkMode ? threatPanelTheme.metricMutedDark : threatPanelTheme.metricMutedLight}`}>
-                            Status
+                            {t('verifyStatus')}
                           </p>
                           <div className="mt-2.5 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-bold border" style={{ background: threatPanelTheme.badgeSurface, color: threatPanelTheme.metricAccent, borderColor: threatPanelTheme.badgeBorder }}>
                             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: threatPanelTheme.metricAccent }} />
@@ -1566,7 +1737,7 @@ export function VerifyClaim() {
                         </div>
                         <div>
                           <p className={`text-xs font-semibold uppercase tracking-wider ${isDarkMode ? threatPanelTheme.metricMutedDark : threatPanelTheme.metricMutedLight}`}>
-                            Risk Score
+                            {t('verifyRiskScore')}
                           </p>
                           <p className={`mt-2.5 text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
                             <span style={{ color: threatPanelTheme.metricAccent }}>{threatPanelTheme.score}</span>
@@ -1597,16 +1768,16 @@ export function VerifyClaim() {
                       </div>
                       <div>
                         <p className={`text-base font-bold ${isDarkMode ? 'text-white' : threatPanelTheme.buttonTitleLight}`}>
-                          Run Deep URL Investigation
+                          {t('verifyRunDeepUrlInvestigation')}
                         </p>
                         <p className={`text-xs mt-0.5 ${isDarkMode ? 'text-[#9CA3AF]' : threatPanelTheme.buttonSubtitleLight}`}>
-                          SSL verification • DNS lookup • Domain history • Trust scoring
+                          {t('verifyDeepUrlHint')}
                         </p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: threatPanelTheme.actionText }}>
-                      Investigate
+                      {t('verifyInvestigate')}
                       <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ backgroundColor: `${threatPanelTheme.actionText}18` }}>
                         <ArrowRight className="h-4 w-4" />
                       </span>
@@ -1619,7 +1790,7 @@ export function VerifyClaim() {
               <div className={`rounded-2xl border p-8 shadow-sm transition-colors ${
                 isDarkMode ? 'bg-[#1E293B] border-[#334155]' : 'bg-white border-[#E2E8F0]'
               }`}>
-                <h2 className={`text-xl mb-6 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Cross-Platform Verification</h2>
+                <h2 className={`text-xl mb-6 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyCrossPlatformVerification')}</h2>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                   <motion.button
@@ -1637,16 +1808,16 @@ export function VerifyClaim() {
                         <span className="text-white text-sm font-semibold leading-none">r/</span>
                       </div>
                       <div>
-                        <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Reddit</p>
+                        <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyPlatformReddit')}</p>
                         <p className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
-                          {isLoadingReddit ? 'Loading...' : `${redditSpreadNodes} Nodes`}
+                          {isLoadingReddit ? t('verifyLoading') : t('verifyNodesCount', { count: redditSpreadNodes })}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className={`w-2 h-2 rounded-full ${redditError ? 'bg-[#EF4444]' : isLoadingReddit ? 'bg-[#FBBF24]' : 'bg-[#22C55E]'}`}></div>
                       <p className={`text-sm ${redditError ? 'text-[#EF4444]' : isLoadingReddit ? 'text-[#FBBF24]' : 'text-[#22C55E]'}`}>
-                        {redditError ? 'Load Failed' : isLoadingReddit ? 'Scanning Reddit' : 'Propagation Ready'}
+                        {redditError ? t('verifyLoadFailed') : isLoadingReddit ? t('verifyScanningReddit') : t('verifyPropagationReady')}
                       </p>
                     </div>
                   </motion.button>
@@ -1665,13 +1836,13 @@ export function VerifyClaim() {
                         <span className="text-white text-lg font-semibold leading-none">X</span>
                       </div>
                       <div>
-                        <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>X</p>
-                        <p className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>47 Mentions</p>
+                        <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyPlatformX')}</p>
+                        <p className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyMentionsCount', { count: 47 })}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-[#22C55E] rounded-full"></div>
-                      <p className="text-sm text-[#22C55E]">Verified</p>
+                      <p className="text-sm text-[#22C55E]">{t('verifyVerified')}</p>
                     </div>
                   </motion.div>
 
@@ -1689,13 +1860,13 @@ export function VerifyClaim() {
                         <Facebook className="w-5 h-5 text-white" />
                       </div>
                       <div>
-                        <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Facebook</p>
-                        <p className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>89 Shares</p>
+                        <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyPlatformFacebook')}</p>
+                        <p className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifySharesCount', { count: 89 })}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-[#EF4444] rounded-full"></div>
-                      <p className="text-sm text-[#EF4444]">Mixed Sources</p>
+                      <p className="text-sm text-[#EF4444]">{t('verifyMixedSources')}</p>
                     </div>
                   </motion.div>
 
@@ -1713,13 +1884,13 @@ export function VerifyClaim() {
                         <Instagram className="w-5 h-5 text-white" />
                       </div>
                       <div>
-                        <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Instagram</p>
-                        <p className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>63 Posts</p>
+                        <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyPlatformInstagram')}</p>
+                        <p className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyPostsCount', { count: 63 })}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-[#FBBF24] rounded-full"></div>
-                      <p className="text-sm text-[#FBBF24]">Monitoring</p>
+                      <p className="text-sm text-[#FBBF24]">{t('verifyMonitoring')}</p>
                     </div>
                   </motion.div>
 
@@ -1737,13 +1908,13 @@ export function VerifyClaim() {
                         <Newspaper className="w-5 h-5 text-white" />
                       </div>
                       <div>
-                        <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>News Sources</p>
-                        <p className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>124 Articles</p>
+                        <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyPlatformNewsSources')}</p>
+                        <p className={`text-lg ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyArticlesCount', { count: 124 })}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-[#22C55E] rounded-full"></div>
-                      <p className="text-sm text-[#22C55E]">Verified</p>
+                      <p className="text-sm text-[#22C55E]">{t('verifyVerified')}</p>
                     </div>
                   </motion.div>
                 </div>
@@ -1758,11 +1929,11 @@ export function VerifyClaim() {
                     <div className="relative space-y-5">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Reddit Propagation</p>
-                          <h3 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Narrative Spread Network</h3>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyRedditPropagation')}</p>
+                          <h3 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyNarrativeSpreadNetwork')}</h3>
                         </div>
                         <div className="inline-flex items-center rounded-full border border-[#FF4500]/20 bg-[#FF4500]/10 px-3 py-1 text-xs text-[#FF8A5B]">
-                          Query: {claim.length > 48 ? `${claim.slice(0, 48)}...` : claim}
+                          {t('verifyQueryPrefix')} {claim.length > 48 ? `${claim.slice(0, 48)}...` : claim}
                         </div>
                       </div>
 
@@ -1778,7 +1949,7 @@ export function VerifyClaim() {
                         {/* Network Graph Header */}
                         <div className="flex items-center justify-between gap-4 p-8 pb-6 border-b border-white/10">
                           <div>
-                            <p className={`text-xs uppercase tracking-[0.24em] mb-2 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Narrative Spread Nodes</p>
+                            <p className={`text-xs uppercase tracking-[0.24em] mb-2 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyNarrativeSpreadNodes')}</p>
                             <p className={`text-3xl leading-none ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
                               {isLoadingReddit ? '...' : redditSpreadNodes}
                             </p>
@@ -1866,16 +2037,16 @@ export function VerifyClaim() {
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Events Captured</p>
-                          <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{isLoadingReddit ? 'Loading...' : redditEventsCount}</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyEventsCaptured')}</p>
+                          <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{isLoadingReddit ? t('verifyLoading') : redditEventsCount}</p>
                         </div>
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Patient Zero</p>
-                          <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{isLoadingReddit ? 'Analyzing Reddit threads...' : redditPatientZero}</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyPatientZero')}</p>
+                          <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{isLoadingReddit ? t('verifyAnalyzingRedditThreads') : redditPatientZero}</p>
                         </div>
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Top Amplifier</p>
-                          <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{isLoadingReddit ? 'Measuring amplification...' : redditSuperSpreader}</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyTopAmplifier')}</p>
+                          <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{isLoadingReddit ? t('verifyMeasuringAmplification') : redditSuperSpreader}</p>
                         </div>
                       </div>
 
@@ -1898,15 +2069,15 @@ export function VerifyClaim() {
                     <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-[#1DA1F2]/10 blur-3xl" />
                     <div className="relative space-y-5">
                       <div>
-                        <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>X Monitoring</p>
-                        <h3 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>X Platform Mentions</h3>
+                        <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyXMonitoring')}</p>
+                        <h3 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyXPlatformMentions')}</h3>
                       </div>
                       <div className={`rounded-[28px] border p-8 ${isDarkMode ? 'bg-[#111827] border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <p className={`text-xs uppercase tracking-[0.24em] mb-4 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Total Mentions</p>
+                            <p className={`text-xs uppercase tracking-[0.24em] mb-4 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyTotalMentions')}</p>
                             <p className={`text-6xl leading-none mb-8 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>47</p>
-                            <p className={`text-xl ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Live engagement metrics</p>
+                            <p className={`text-xl ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyLiveEngagementMetrics')}</p>
                           </div>
                           <div className="flex h-20 w-20 items-center justify-center rounded-[24px] bg-[#1DA1F2]/10">
                             <span className="text-5xl">𝕏</span>
@@ -1915,16 +2086,16 @@ export function VerifyClaim() {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Retweets</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyRetweets')}</p>
                           <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>142</p>
                         </div>
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Replies</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyReplies')}</p>
                           <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>89</p>
                         </div>
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Status</p>
-                          <p className={`text-2xl text-[#22C55E]`}>Verified</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyStatus')}</p>
+                          <p className={`text-2xl text-[#22C55E]`}>{t('verifyVerified')}</p>
                         </div>
                       </div>
                       <SpreadTimelinePanel
@@ -1946,15 +2117,15 @@ export function VerifyClaim() {
                     <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-[#1877F2]/10 blur-3xl" />
                     <div className="relative space-y-5">
                       <div>
-                        <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Facebook Network</p>
-                        <h3 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Engagement Analysis</h3>
+                        <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyFacebookNetwork')}</p>
+                        <h3 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyEngagementAnalysis')}</h3>
                       </div>
                       <div className={`rounded-[28px] border p-8 ${isDarkMode ? 'bg-[#111827] border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <p className={`text-xs uppercase tracking-[0.24em] mb-4 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Total Shares</p>
+                            <p className={`text-xs uppercase tracking-[0.24em] mb-4 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyTotalShares')}</p>
                             <p className={`text-6xl leading-none mb-8 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>89</p>
-                            <p className={`text-xl ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Mixed source amplification</p>
+                            <p className={`text-xl ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyMixedSourceAmplification')}</p>
                           </div>
                           <div className="flex h-20 w-20 items-center justify-center rounded-[24px] bg-[#1877F2]/10">
                             <Facebook className="w-12 h-12 text-[#1877F2]" />
@@ -1963,16 +2134,16 @@ export function VerifyClaim() {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Comments</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyComments')}</p>
                           <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>124</p>
                         </div>
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Reactions</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyReactions')}</p>
                           <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>356</p>
                         </div>
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Status</p>
-                          <p className={`text-2xl text-[#EF4444]`}>Mixed Sources</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyStatus')}</p>
+                          <p className={`text-2xl text-[#EF4444]`}>{t('verifyMixedSources')}</p>
                         </div>
                       </div>
                       <SpreadTimelinePanel
@@ -1994,15 +2165,15 @@ export function VerifyClaim() {
                     <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-[#E1306C]/10 blur-3xl" />
                     <div className="relative space-y-5">
                       <div>
-                        <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Instagram Activity</p>
-                        <h3 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Visual Content Spread</h3>
+                        <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyInstagramActivity')}</p>
+                        <h3 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyVisualContentSpread')}</h3>
                       </div>
                       <div className={`rounded-[28px] border p-8 ${isDarkMode ? 'bg-[#111827] border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <p className={`text-xs uppercase tracking-[0.24em] mb-4 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Total Posts</p>
+                            <p className={`text-xs uppercase tracking-[0.24em] mb-4 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyTotalPosts')}</p>
                             <p className={`text-6xl leading-none mb-8 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>63</p>
-                            <p className={`text-xl ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Under monitoring</p>
+                            <p className={`text-xl ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyUnderMonitoring')}</p>
                           </div>
                           <div className="flex h-20 w-20 items-center justify-center rounded-[24px] bg-[#E1306C]/10">
                             <Instagram className="w-12 h-12 text-[#E1306C]" />
@@ -2011,16 +2182,16 @@ export function VerifyClaim() {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Likes</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyLikes')}</p>
                           <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>2,847</p>
                         </div>
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Comments</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyComments')}</p>
                           <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>421</p>
                         </div>
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Status</p>
-                          <p className={`text-2xl text-[#FBBF24]`}>Monitoring</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyStatus')}</p>
+                          <p className={`text-2xl text-[#FBBF24]`}>{t('verifyMonitoring')}</p>
                         </div>
                       </div>
                       <SpreadTimelinePanel
@@ -2042,15 +2213,15 @@ export function VerifyClaim() {
                     <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-[#FF6B00]/10 blur-3xl" />
                     <div className="relative space-y-5">
                       <div>
-                        <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>News Coverage</p>
-                        <h3 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Publisher Distribution</h3>
+                        <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyNewsCoverage')}</p>
+                        <h3 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyPublisherDistribution')}</h3>
                       </div>
                       <div className={`rounded-[28px] border p-8 ${isDarkMode ? 'bg-[#111827] border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <p className={`text-xs uppercase tracking-[0.24em] mb-4 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Total Articles</p>
+                            <p className={`text-xs uppercase tracking-[0.24em] mb-4 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyTotalArticles')}</p>
                             <p className={`text-6xl leading-none mb-8 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>124</p>
-                            <p className={`text-xl ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Verified coverage detected</p>
+                            <p className={`text-xl ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyVerifiedCoverageDetected')}</p>
                           </div>
                           <div className="flex h-20 w-20 items-center justify-center rounded-[24px] bg-[#FF6B00]/10">
                             <Newspaper className="w-12 h-12 text-[#FF6B00]" />
@@ -2059,16 +2230,16 @@ export function VerifyClaim() {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Tier 1 Sources</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyTier1Sources')}</p>
                           <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>47</p>
                         </div>
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Tier 2 Sources</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyTier2Sources')}</p>
                           <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>56</p>
                         </div>
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
-                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Status</p>
-                          <p className={`text-2xl text-[#22C55E]`}>Verified</p>
+                          <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyStatus')}</p>
+                          <p className={`text-2xl text-[#22C55E]`}>{t('verifyVerified')}</p>
                         </div>
                       </div>
                       <SpreadTimelinePanel
@@ -2083,8 +2254,7 @@ export function VerifyClaim() {
 
                 <div className={`mt-6 p-4 rounded-xl ${isDarkMode ? 'bg-[#0F172A]' : 'bg-[#F8FAFC]'}`}>
                   <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
-                    <strong className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>Cross-platform analysis:</strong> This claim has been detected across multiple social media platforms and news sources.
-                    The verification engine monitors Reddit threads, news websites, Instagram posts, and social media mentions to provide comprehensive fact-checking coverage.
+                    <strong className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('verifyCrossPlatformSummaryLabel')}</strong> {t('verifyCrossPlatformSummaryBody')}
                   </p>
                 </div>
               </div>
@@ -2096,21 +2266,21 @@ export function VerifyClaim() {
                 }`}>
                   <div className="flex items-center gap-2 mb-6">
                     <ImageIcon className="w-5 h-5 text-[#3B82F6]" />
-                    <h2 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Image Claim Verification</h2>
+                    <h2 className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyImageClaimVerification')}</h2>
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div>
-                      <p className={`text-sm mb-3 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Uploaded Image:</p>
+                      <p className={`text-sm mb-3 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyUploadedImage')}</p>
                       <img
                         src={uploadedImage}
-                        alt="Uploaded"
+                        alt={t('verifyUploadedAlt')}
                         className={`w-full rounded-xl border ${isDarkMode ? 'border-[#334155]' : 'border-[#E2E8F0]'}`}
                       />
                     </div>
 
                     <div>
-                      <p className={`text-sm mb-3 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Extracted Text:</p>
+                      <p className={`text-sm mb-3 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyExtractedText')}</p>
                       <div className={`rounded-xl p-4 mb-4 ${isDarkMode ? 'bg-[#0F172A]' : 'bg-[#F8FAFC]'}`}>
                         <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{ocrText || claim}</p>
                       </div>
@@ -2119,9 +2289,9 @@ export function VerifyClaim() {
                         <div className="flex items-start gap-3">
                           <CheckCircle2 className="w-5 h-5 text-[#22C55E] flex-shrink-0 mt-0.5" />
                           <div>
-                            <p className="text-sm text-[#22C55E] mb-1">Text Successfully Extracted</p>
+                            <p className="text-sm text-[#22C55E] mb-1">{t('verifyTextExtractedTitle')}</p>
                             <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
-                              The claim has been extracted and analyzed against our database of trusted sources.
+                              {t('verifyTextExtractedBody')}
                             </p>
                           </div>
                         </div>
@@ -2145,18 +2315,18 @@ export function VerifyClaim() {
             >
               <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Reloading Verification</p>
-                  <h2 className={`text-2xl mb-3 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Analyzing the updated claim</h2>
+                  <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyReloading')}</p>
+                  <h2 className={`text-2xl mb-3 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyAnalyzingUpdatedClaim')}</h2>
                   <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>
-                    We are refreshing the verification dashboard, rechecking sources, and rebuilding the cross-platform spread view.
+                    {t('verifyReloadingDesc')}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-3 rounded-2xl border border-[#22D3EE]/20 bg-[#22D3EE]/10 px-5 py-4">
                   <div className="h-10 w-10 rounded-full border-2 border-[#22D3EE]/30 border-t-[#22D3EE] animate-spin" />
                   <div>
-                    <p className="text-sm text-[#22D3EE]">Refresh in progress</p>
-                    <p className={`text-xs ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Fetching evidence and recomputing credibility</p>
+                    <p className="text-sm text-[#22D3EE]">{t('verifyRefreshInProgress')}</p>
+                    <p className={`text-xs ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('verifyRefreshHint')}</p>
                   </div>
                 </div>
               </div>
@@ -2189,8 +2359,8 @@ export function VerifyClaim() {
               }`}>
                 <Sparkles className="w-8 h-8 text-[#94A3B8]" />
               </div>
-              <h3 className={`text-xl mb-2 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Ready to Verify</h3>
-              <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>Enter a claim above or upload an image to start the verification process</p>
+              <h3 className={`text-xl mb-2 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyEmptyTitle')}</h3>
+              <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>{t('verifyEmptyDesc')}</p>
             </div>
           )}
         </div>

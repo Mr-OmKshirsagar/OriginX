@@ -1,5 +1,6 @@
 import { useId, type CSSProperties } from 'react';
 import { motion } from 'motion/react';
+import { useLanguage } from '../components/LanguageContext';
 
 interface CredibilityGaugeProps {
   score: number; // 0-100
@@ -13,6 +14,7 @@ export function CredibilityGauge({ score, isDarkMode = true }: CredibilityGaugeP
   const stageId = useId();
   const clipId = useId();
   const shimmerId = useId();
+  const { t } = useLanguage();
   const safeScore = Math.max(0, Math.min(100, score));
 
   const getPalette = () => {
@@ -68,10 +70,10 @@ export function CredibilityGauge({ score, isDarkMode = true }: CredibilityGaugeP
   } as CSSProperties;
 
   const getLabel = () => {
-    if (safeScore >= 75) return 'Likely True';
-    if (safeScore >= 50) return 'Promising';
-    if (safeScore >= 25) return 'Uncertain';
-    return 'Likely False';
+    if (safeScore >= 75) return t('verifyFallbackVerdictTrue');
+    if (safeScore >= 50) return t('gaugePromising');
+    if (safeScore >= 25) return t('dashboardStatUncertain');
+    return t('verifyFallbackVerdictFalse');
   };
 
   const shieldPath = 'M110 20C146 20 179 29 179 29V101C179 154 145 190 110 212C75 190 41 154 41 101V29C41 29 74 20 110 20Z';
@@ -220,7 +222,7 @@ export function CredibilityGauge({ score, isDarkMode = true }: CredibilityGaugeP
           >
             {safeScore}%
           </motion.div>
-          <p className={`text-sm mt-1 ${labelTextColor}`}>Credibility</p>
+          <p className={`text-sm mt-1 ${labelTextColor}`}>{t('gaugeCredibility')}</p>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 from app.config import settings
-from app.services.news_verification import search_news_sources
+from app.services.news_verification import fetch_trending_daily_news, search_news_sources
 from requests import HTTPError, RequestException
 
 
@@ -73,3 +73,67 @@ def test_search_news_sources_request_failure(monkeypatch) -> None:
         assert "NewsAPI request failed" in str(exc)
     else:
         raise AssertionError("Expected RuntimeError on request failure")
+
+
+def test_fetch_trending_daily_news_filters_strict_category(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.news_verification._fetch_region_rss",
+        lambda region_code, category=None: [
+            {
+                "source": "Reuters",
+                "title": "AI startup unveils new semiconductor platform",
+                "description": "Technology firms race to build faster AI chips",
+                "url": "https://example.com/tech-story",
+                "published_at": "2026-03-17T08:00:00Z",
+                "region": region_code.upper(),
+                "category": "technology",
+            },
+            {
+                "source": "Reuters",
+                "title": "National team wins football championship final",
+                "description": "Sports fans celebrate a dramatic tournament finish",
+                "url": "https://example.com/sports-story",
+                "published_at": "2026-03-17T09:00:00Z",
+                "region": region_code.upper(),
+                "category": "sports",
+            },
+        ],
+    )
+
+    result = fetch_trending_daily_news(limit=10, country="in", category="technology", local_country="in")
+
+    assert result["category"] == "technology"
+    assert result["articles_found"] == 1
+    assert result["articles"][0]["category"] == "technology"
+    assert "AI startup" in result["articles"][0]["title"]
+
+
+def test_fetch_trending_daily_news_classifies_general_when_no_specific_category(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.news_verification._fetch_region_rss",
+        lambda region_code, category=None: [
+            {
+                "source": "Reuters",
+                "title": "Prime minister addresses parliament after summit",
+                "description": "Officials outlined the latest policy priorities in the capital",
+                "url": "https://example.com/general-story",
+                "published_at": "2026-03-17T10:00:00Z",
+                "region": region_code.upper(),
+            },
+            {
+                "source": "Reuters",
+                "title": "Hospital expands vaccine trial across three cities",
+                "description": "Researchers expect the health study to continue this year",
+                "url": "https://example.com/health-story",
+                "published_at": "2026-03-17T11:00:00Z",
+                "region": region_code.upper(),
+            },
+        ],
+    )
+
+    result = fetch_trending_daily_news(limit=10, country="in", category="general", local_country="in")
+
+    assert result["category"] == "general"
+    assert result["articles_found"] == 1
+    assert result["articles"][0]["category"] == "general"
+    assert "parliament" in result["articles"][0]["title"].lower()

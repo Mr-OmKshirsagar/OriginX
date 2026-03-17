@@ -19,6 +19,7 @@ import {
 import { Sidebar } from '../components/Sidebar';
 import { CredibilityGauge } from '../components/CredibilityGauge';
 import { useDarkMode } from '../components/DarkModeContext';
+import { useLanguage } from '../components/LanguageContext';
 import {
   analyzeDomainSecurity,
   type DomainSecurityResult,
@@ -50,13 +51,6 @@ const CATEGORY_THEME: Record<RiskCategory, { accent: string; softBg: string; sof
   risk: { accent: '#F97316', softBg: '#F973161A', softBorder: '#F9731655' },
   'high-risk': { accent: '#EF4444', softBg: '#EF44441A', softBorder: '#EF444455' },
 };
-
-function categoryLabel(category: RiskCategory): string {
-  if (category === 'high-risk') return 'HIGH RISK';
-  if (category === 'risk') return 'RISK';
-  if (category === 'medium') return 'MEDIUM';
-  return 'SAFE';
-}
 
 function categoryFromSeverityScore(score: number): RiskCategory {
   if (score >= 75) return 'high-risk';
@@ -90,15 +84,16 @@ function categoryFromThreatCount(count: number): RiskCategory {
   return 'safe';
 }
 
-function pluralize(value: number, unit: string): string {
-  return `${value} ${unit}${value === 1 ? '' : 's'}`;
+function pluralizeWithForms(value: number, singular: string, plural: string): string {
+  return `${value} ${value === 1 ? singular : plural}`;
 }
 
-function formatDomainAge(days: number | null | undefined): { label: string; detail: string } {
+function formatDomainAge(days: number | null | undefined, t: (key: string, params?: Record<string, string | number>) => string): { label: string; detail: string; isUnknown: boolean } {
   if (typeof days !== 'number' || Number.isNaN(days) || days < 0) {
     return {
-      label: 'Unknown',
-      detail: 'Domain age is unavailable.',
+      label: t('commonUnknown'),
+      detail: t('urlInvDomainAgeUnavailableShort'),
+      isUnknown: true,
     };
   }
 
@@ -107,14 +102,15 @@ function formatDomainAge(days: number | null | undefined): { label: string; deta
   const months = Math.floor(remainingAfterYears / 30);
   const remainingDays = remainingAfterYears % 30;
   const parts = [
-    pluralize(years, 'year'),
-    pluralize(months, 'month'),
-    pluralize(remainingDays, 'day'),
+    pluralizeWithForms(years, t('urlInvUnitYearOne'), t('urlInvUnitYearMany')),
+    pluralizeWithForms(months, t('urlInvUnitMonthOne'), t('urlInvUnitMonthMany')),
+    pluralizeWithForms(remainingDays, t('urlInvUnitDayOne'), t('urlInvUnitDayMany')),
   ];
 
   return {
-    label: `${days} days`,
+    label: t('urlInvDaysLabel', { days }),
     detail: parts.join(', '),
+    isUnknown: false,
   };
 }
 
@@ -143,6 +139,7 @@ function Counter({ value, suffix = '', duration = 1100 }: { value: number; suffi
 export function UrlInvestigation() {
   const location = useLocation();
   const { isDarkMode } = useDarkMode();
+  const { t } = useLanguage();
   const initialUrlFromState = (location.state as { initialUrl?: string } | null)?.initialUrl || '';
   const [url, setUrl] = useState(() => {
     return initialUrlFromState;
@@ -152,6 +149,13 @@ export function UrlInvestigation() {
   const [domainResult, setDomainResult] = useState<DomainSecurityResult | null>(null);
   const [investigationError, setInvestigationError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const getCategoryLabel = (category: RiskCategory): string => {
+    if (category === 'high-risk') return t('urlInvCategoryHighRisk');
+    if (category === 'risk') return t('urlInvCategoryRisk');
+    if (category === 'medium') return t('urlInvCategoryMedium');
+    return t('urlInvCategorySafe');
+  };
 
   useEffect(() => {
     const state = location.state as { initialUrl?: string } | null;
@@ -167,7 +171,7 @@ export function UrlInvestigation() {
     if (!trimmedUrl) {
       setShowResults(false);
       setDomainResult(null);
-      setInvestigationError('Please enter a valid URL before starting investigation.');
+      setInvestigationError(t('urlInvErrorEnterValid'));
       return;
     }
 
@@ -183,12 +187,12 @@ export function UrlInvestigation() {
       setLastUpdated(new Date());
       setShowResults(Boolean(firstResult));
       if (!firstResult) {
-        setInvestigationError('No investigation data was returned for this URL. Please try another URL.');
+        setInvestigationError(t('urlInvErrorNoData'));
       }
     } catch (error) {
       setDomainResult(null);
       setShowResults(false);
-      setInvestigationError(error instanceof Error ? error.message : 'Failed to connect to backend services.');
+      setInvestigationError(error instanceof Error ? error.message : t('urlInvErrorBackend'));
     } finally {
       setIsInvestigating(false);
     }
@@ -206,7 +210,7 @@ export function UrlInvestigation() {
       parsed = null;
     }
 
-    const hostname = domainResult?.domain || parsed?.hostname || 'Unknown';
+    const hostname = domainResult?.domain || parsed?.hostname || t('commonUnknown');
     const metadata = domainResult?.metadata;
     const protocol = parsed?.protocol || '';
     const pathname = parsed?.pathname || '';
@@ -221,39 +225,48 @@ export function UrlInvestigation() {
     const possibleImpersonation = impersonationKeywords && !knownBrandDomain;
 
     const derivedThreats: string[] = [];
-    if (hasSuspiciousTld) derivedThreats.push('Suspicious top-level domain');
-    if (possibleImpersonation) derivedThreats.push('Possible brand impersonation');
-    if (loginKeywords) derivedThreats.push('Credential harvesting pattern in URL');
-    if (hasLongPath) derivedThreats.push('Deep path often used in spoofed landing pages');
-    if (domainRisk === 'high') derivedThreats.push('Backend model flagged this domain as high risk');
-    if (domainRisk === 'medium') derivedThreats.push('Backend model detected mixed trust signals');
+    if (hasSuspiciousTld) derivedThreats.push(t('urlInvThreatSuspiciousTld'));
+    if (possibleImpersonation) derivedThreats.push(t('urlInvThreatImpersonation'));
+    if (loginKeywords) derivedThreats.push(t('urlInvThreatCredentialHarvesting'));
+    if (hasLongPath) derivedThreats.push(t('urlInvThreatDeepPath'));
+    if (domainRisk === 'high') derivedThreats.push(t('urlInvThreatBackendHighRisk'));
+    if (domainRisk === 'medium') derivedThreats.push(t('urlInvThreatBackendMixedSignals'));
 
     const severityScore = domainRisk === 'high' ? 86 : domainRisk === 'medium' ? 58 : domainRisk === 'low' ? 12 : derivedThreats.length ? 46 : 18;
-    const severityLabel = severityScore >= 75 ? 'Critical' : severityScore >= 45 ? 'Elevated' : 'Safe';
+    const severityLabel = severityScore >= 75 ? t('urlInvSeverityCritical') : severityScore >= 45 ? t('urlInvSeverityElevated') : t('urlInvSeveritySafe');
     const severityAccent = severityScore >= 75 ? UI_COLORS.alert : severityScore >= 45 ? UI_COLORS.primary : UI_COLORS.secondary;
 
-    const domainAge = formatDomainAge(metadata?.domain_age_days);
+    const domainAge = formatDomainAge(metadata?.domain_age_days, t);
     const domainAgeNote = metadata?.domain_created_at
-      ? `${domainAge.detail} old • Registered on ${metadata.domain_created_at}${metadata.domain_expires_at ? ` • Expires on ${metadata.domain_expires_at}` : ''}`
-      : domainAge.label === 'Unknown'
-        ? 'Domain registration age is unavailable from public WHOIS/RDAP records.'
-        : `${domainAge.detail} old.`;
+      ? (metadata.domain_expires_at
+        ? t('urlInvDomainAgeRegisteredWithExpiry', {
+            detail: domainAge.detail,
+            createdAt: metadata.domain_created_at,
+            expiresAt: metadata.domain_expires_at,
+          })
+        : t('urlInvDomainAgeRegistered', {
+            detail: domainAge.detail,
+            createdAt: metadata.domain_created_at,
+          }))
+      : domainAge.isUnknown
+        ? t('urlInvDomainAgeUnavailableLong')
+        : t('urlInvDomainAgeDetailOnly', { detail: domainAge.detail });
     const sslExpiry = metadata?.ssl_expiry;
     const sslValid = metadata?.ssl_valid === true;
-    const sslLabel = !isHttps ? 'No HTTPS' : sslValid ? 'Valid SSL' : 'SSL Unknown';
+    const sslLabel = !isHttps ? t('urlInvNoHttps') : sslValid ? t('urlInvSslValid') : t('urlInvSslUnknown');
     const sslCategory = categoryFromSsl(isHttps, sslValid);
     const sslAccent = CATEGORY_THEME[sslCategory].accent;
     const sslNote = !isHttps
-      ? 'Connection is not encrypted. Treat as unsafe.'
+      ? t('urlInvSslNoteNotEncrypted')
       : sslValid
-        ? `Certificate is active${sslExpiry ? ` until ${sslExpiry}` : ''}.`
-        : 'HTTPS is present but certificate details could not be verified.';
-    const locationLabel = metadata?.country_code || metadata?.country || 'Unknown';
+        ? (sslExpiry ? t('urlInvSslNoteValidUntil', { expiry: sslExpiry }) : t('urlInvSslNoteValid'))
+        : t('urlInvSslNoteUnknown');
+    const locationLabel = metadata?.country_code || metadata?.country || t('commonUnknown');
     const locationNote = metadata?.location
       ? `${metadata.location}${metadata?.isp ? ` • ISP: ${metadata.isp}` : ''}`
       : metadata?.isp
-        ? `ISP: ${metadata.isp}`
-        : 'ISP: Unknown';
+        ? t('urlInvIspLabel', { isp: metadata.isp })
+        : t('urlInvIspUnknown');
 
     const sectionCategories = {
       severity: categoryFromSeverityScore(severityScore),
@@ -274,7 +287,7 @@ export function UrlInvestigation() {
 
     return {
       hostname,
-      displayUrl: trimmedUrl || 'No URL provided',
+      displayUrl: trimmedUrl || t('urlInvNoUrlProvided'),
       isHttps,
       severityScore,
       severityLabel,
@@ -290,9 +303,9 @@ export function UrlInvestigation() {
       threats: derivedThreats,
       sectionCategories,
       primaryRiskCategory,
-      summary: domainResult?.reason || (derivedThreats.length ? 'This URL shows multiple suspicious signals that warrant deeper inspection.' : 'No strong threat indicators were detected from the current URL structure.'),
+      summary: domainResult?.reason || (derivedThreats.length ? t('urlInvSummarySuspicious') : t('urlInvSummaryNoIndicators')),
     };
-  }, [domainResult, domainRisk, url]);
+  }, [domainResult, domainRisk, t, url]);
 
   const technicalDetails = useMemo(() => {
     const trimmedUrl = url.trim();
@@ -306,25 +319,25 @@ export function UrlInvestigation() {
     }
 
     return [
-      { label: 'IP Address', value: metadata?.ip_address || 'Unknown' },
-      { label: 'Page Title', value: metadata?.page_title || 'Unknown' },
-      { label: 'Redirect Hops', value: typeof metadata?.redirect_hops === 'number' ? String(metadata.redirect_hops) : 'Unknown' },
-      { label: 'Registrar', value: metadata?.registrar || 'Unknown' },
-      { label: 'DNS A', value: metadata?.dns_a?.length ? metadata.dns_a.join(', ') : (parsed?.hostname ? 'Unavailable' : 'Unavailable') },
-      { label: 'DNS MX', value: metadata?.dns_mx?.length ? metadata.dns_mx.join(', ') : 'Unavailable' },
-      { label: 'SSL Expiry', value: metadata?.ssl_expiry || (investigationSummary.isHttps ? 'Unknown' : 'Not HTTPS') },
-      { label: 'Triggered Heuristics', value: investigationSummary.threats.length ? investigationSummary.threats.join(', ') : 'None' },
+      { label: t('urlInvDetailsIpAddress'), value: metadata?.ip_address || t('commonUnknown') },
+      { label: t('urlInvDetailsPageTitle'), value: metadata?.page_title || t('commonUnknown') },
+      { label: t('urlInvDetailsRedirectHops'), value: typeof metadata?.redirect_hops === 'number' ? String(metadata.redirect_hops) : t('commonUnknown') },
+      { label: t('urlInvDetailsRegistrar'), value: metadata?.registrar || t('commonUnknown') },
+      { label: t('urlInvDetailsDnsA'), value: metadata?.dns_a?.length ? metadata.dns_a.join(', ') : (parsed?.hostname ? t('commonUnavailable') : t('commonUnavailable')) },
+      { label: t('urlInvDetailsDnsMx'), value: metadata?.dns_mx?.length ? metadata.dns_mx.join(', ') : t('commonUnavailable') },
+      { label: t('urlInvDetailsSslExpiry'), value: metadata?.ssl_expiry || (investigationSummary.isHttps ? t('commonUnknown') : t('urlInvNotHttps')) },
+      { label: t('urlInvDetailsTriggeredHeuristics'), value: investigationSummary.threats.length ? investigationSummary.threats.join(', ') : t('commonNone') },
     ];
-  }, [domainResult, investigationSummary.isHttps, investigationSummary.threats, url]);
+  }, [domainResult, investigationSummary.isHttps, investigationSummary.threats, t, url]);
 
   const riskTone = CATEGORY_THEME[investigationSummary.primaryRiskCategory].accent;
   const riskHeadline = domainRisk === 'high'
-    ? 'Likely malicious destination'
+    ? t('urlInvRiskHeadlineHigh')
     : domainRisk === 'medium'
-      ? 'Mixed trust signals detected'
+      ? t('urlInvRiskHeadlineMedium')
       : domainRisk === 'low'
-        ? 'No major domain risk detected'
-        : 'Awaiting domain confidence signal';
+        ? t('urlInvRiskHeadlineLow')
+        : t('urlInvRiskHeadlineUnknown');
 
   return (
     <div className={`min-h-screen transition-all duration-300 ${
@@ -341,7 +354,7 @@ export function UrlInvestigation() {
               <Zap className="w-6 h-6" />
             </div>
             <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>
-              URL Investigation Mode
+              {t('urlInvTitle')}
             </h1>
           </div>
 
@@ -354,7 +367,7 @@ export function UrlInvestigation() {
             <div className="absolute right-0 top-0 h-44 w-44 rounded-full blur-3xl" style={{ backgroundColor: `${UI_COLORS.primary}20` }} />
             <div className="relative grid grid-cols-1 gap-8 items-center">
               <div>
-                <p className={`text-[20px] uppercase tracking-[0.08em] mb-3 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>URL Input Panel</p>
+                <p className={`text-[20px] uppercase tracking-[0.08em] mb-3 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('urlInvInputPanel')}</p>
                 <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-[#0F172A]/90 border-white/8' : 'bg-[#F8FAFC] border-[#E2E8F0]'}`}>
                   <div className="relative">
                     <Link2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
@@ -371,7 +384,7 @@ export function UrlInvestigation() {
                           void runInvestigation();
                         }
                       }}
-                      placeholder="Paste a news article URL to investigate"
+                      placeholder={t('urlInvPlaceholder')}
                       className={`w-full rounded-2xl border pl-12 pr-4 py-4 outline-none transition-all ${
                         isDarkMode
                           ? 'bg-[#0B1120] border-[#334155] text-white placeholder:text-[#64748B] focus:border-[#22D3EE] focus:ring-2 focus:ring-[#22D3EE]/20'
@@ -380,7 +393,7 @@ export function UrlInvestigation() {
                     />
                   </div>
                   <p className={`text-sm mt-3 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
-                    Paste a suspicious article, phishing link, or fake login page. Press Enter to run a fresh scan.
+                    {t('urlInvHint')}
                   </p>
                   <motion.button
                     whileHover={{ y: -3, scale: 1.01 }}
@@ -392,7 +405,7 @@ export function UrlInvestigation() {
                     style={{ background: `linear-gradient(90deg, ${UI_COLORS.primary}, ${UI_COLORS.secondary})`, boxShadow: `0 18px 40px ${UI_COLORS.primary}33` }}
                   >
                     <SearchCheck className="w-5 h-5" />
-                    <span>Start Investigation</span>
+                    <span>{t('urlInvStart')}</span>
                   </motion.button>
                 </div>
               </div>
@@ -411,9 +424,9 @@ export function UrlInvestigation() {
                 <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${UI_COLORS.primary}, ${UI_COLORS.secondary}, ${UI_COLORS.alert})` }} />
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                   <div className="max-w-3xl flex-1">
-                    <p className={`text-sm uppercase tracking-widest mb-3 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>ANALYZING INVESTIGATION</p>
-                    <h2 className={`text-3xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Investigating the URL</h2>
-                    <p className={`text-base mb-6 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>We are analyzing domain security, checking SSL certificates, detecting threats, and building a credibility profile.</p>
+                    <p className={`text-sm uppercase tracking-widest mb-3 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('urlInvAnalyzingLabel')}</p>
+                    <h2 className={`text-3xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('urlInvAnalyzingTitle')}</h2>
+                    <p className={`text-base mb-6 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('urlInvAnalyzingDesc')}</p>
                     
                     <div className="space-y-3">
                       <div className={`h-4 rounded-full animate-pulse ${isDarkMode ? 'bg-white/10' : 'bg-gray-200'}`} style={{ width: '75%' }} />
@@ -430,8 +443,8 @@ export function UrlInvestigation() {
                           <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="88" strokeLinecap="round" opacity="1" />
                         </svg>
                       </div>
-                      <p className={`text-sm font-medium text-center ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#475569]'}`}>Investigation in progress</p>
-                      <p className={`text-xs text-center ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Analyzing credentials and security signals</p>
+                      <p className={`text-sm font-medium text-center ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#475569]'}`}>{t('urlInvInProgress')}</p>
+                      <p className={`text-xs text-center ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('urlInvAnalyzingSignals')}</p>
                     </div>
                   </div>
                 </div>
@@ -455,19 +468,19 @@ export function UrlInvestigation() {
                 <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${riskTone}, ${UI_COLORS.secondary})` }} />
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="max-w-3xl">
-                    <p className={`text-[20px] uppercase tracking-[0.08em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>AI Risk Brief</p>
+                    <p className={`text-[20px] uppercase tracking-[0.08em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('urlInvRiskBrief')}</p>
                     <h2 className={`text-2xl font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{riskHeadline}</h2>
                     <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>{investigationSummary.summary}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <div className="rounded-full px-3 py-1.5 text-sm font-medium" style={{ backgroundColor: `${riskTone}15`, color: riskTone, border: `1px solid ${riskTone}30` }}>
-                      {categoryLabel(investigationSummary.primaryRiskCategory)}
+                      {getCategoryLabel(investigationSummary.primaryRiskCategory)}
                     </div>
                     <div className={`rounded-full border px-3 py-1.5 text-sm ${isDarkMode ? 'border-white/8 text-[#94A3B8]' : 'border-[#E2E8F0] text-[#64748B]'}`}>
                       {investigationSummary.hostname}
                     </div>
                     <div className={`rounded-full border px-3 py-1.5 text-sm ${isDarkMode ? 'border-white/8 text-[#94A3B8]' : 'border-[#E2E8F0] text-[#64748B]'}`}>
-                      {investigationSummary.threatCount} heuristics triggered
+                      {t('urlInvHeuristicsTriggered', { count: investigationSummary.threatCount })}
                     </div>
                   </div>
                 </div>
@@ -478,10 +491,10 @@ export function UrlInvestigation() {
                   <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #FACC15, #FDE047)' }} />
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <p className={`text-[20px] uppercase tracking-[0.08em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Credibility Score</p>
-                      <h2 className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>Shield Verification Meter</h2>
+                      <p className={`text-[20px] uppercase tracking-[0.08em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('urlInvCredibilityScore')}</p>
+                      <h2 className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('urlInvShieldMeter')}</h2>
                     </div>
-                    <div className="rounded-full px-3 py-1 text-sm" style={{ border: `1px solid ${UI_COLORS.secondary}33`, backgroundColor: `${UI_COLORS.secondary}12`, color: UI_COLORS.secondary }}>AI-calibrated</div>
+                    <div className="rounded-full px-3 py-1 text-sm" style={{ border: `1px solid ${UI_COLORS.secondary}33`, backgroundColor: `${UI_COLORS.secondary}12`, color: UI_COLORS.secondary }}>{t('urlInvAiCalibrated')}</div>
                   </div>
                   <div className="flex items-center justify-center">
                     <CredibilityGauge score={investigationScore} isDarkMode={isDarkMode} />
@@ -493,7 +506,7 @@ export function UrlInvestigation() {
                     {[
                       {
                         icon: ShieldCheck,
-                        label: 'Severity Score',
+                        label: t('urlInvSeverityScore'),
                         category: investigationSummary.sectionCategories.severity,
                         accent: CATEGORY_THEME[investigationSummary.sectionCategories.severity].accent,
                         content: (
@@ -502,7 +515,7 @@ export function UrlInvestigation() {
                               <span className="text-6xl font-semibold leading-none" style={{ color: investigationSummary.severityAccent }}><Counter value={investigationSummary.severityScore} duration={900} /></span>
                               <div className="pb-1">
                                 <p className="text-2xl font-semibold" style={{ color: investigationSummary.severityAccent }}>{investigationSummary.severityLabel}</p>
-                                <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>out of 100</p>
+                                <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>{t('urlInvOutOfHundred')}</p>
                               </div>
                             </div>
                             <div className={`h-3 rounded-full overflow-hidden ${isDarkMode ? 'bg-[#1E293B]' : 'bg-[#E2E8F0]'}`}>
@@ -513,7 +526,7 @@ export function UrlInvestigation() {
                       },
                       {
                         icon: CalendarDays,
-                        label: 'Domain Age',
+                        label: t('urlInvDomainAge'),
                         category: investigationSummary.sectionCategories.domainAge,
                         accent: CATEGORY_THEME[investigationSummary.sectionCategories.domainAge].accent,
                         content: (
@@ -521,30 +534,30 @@ export function UrlInvestigation() {
                             <p className={`text-4xl font-semibold ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{investigationSummary.domainAgeLabel}</p>
                             <p className={`mt-3 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{investigationSummary.domainAgeNote}</p>
                             <p className="mt-3 text-lg" style={{ color: CATEGORY_THEME[investigationSummary.sectionCategories.domainAge].accent }}>
-                              {categoryLabel(investigationSummary.sectionCategories.domainAge)}
+                              {getCategoryLabel(investigationSummary.sectionCategories.domainAge)}
                             </p>
                           </>
                         )
                       },
                       {
                         icon: Lock,
-                        label: 'SSL Status',
+                        label: t('urlInvSslStatus'),
                         category: investigationSummary.sectionCategories.ssl,
                         accent: investigationSummary.sslAccent,
                         content: (
                           <>
                             <p className="text-2xl font-semibold" style={{ color: investigationSummary.sslAccent }}>{investigationSummary.sslLabel}</p>
                             <div className="mt-3 inline-flex items-center rounded-full border px-3 py-1 text-sm" style={{ borderColor: `${investigationSummary.sslAccent}55`, color: investigationSummary.sslAccent, backgroundColor: `${investigationSummary.sslAccent}10` }}>
-                              {domainRisk === 'high' ? 'CRITICAL' : investigationSummary.isHttps ? 'ENCRYPTED' : 'UNSAFE'}
+                              {domainRisk === 'high' ? t('urlInvSslBadgeCritical') : investigationSummary.isHttps ? t('urlInvSslBadgeEncrypted') : t('urlInvSslBadgeUnsafe')}
                             </div>
                             <p className={`mt-4 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{investigationSummary.sslNote}</p>
-                            {domainRisk === 'high' && <p className="mt-3 text-lg" style={{ color: UI_COLORS.alert }}>+50% Risk score</p>}
+                            {domainRisk === 'high' && <p className="mt-3 text-lg" style={{ color: UI_COLORS.alert }}>{t('urlInvRiskScoreBoost')}</p>}
                           </>
                         )
                       },
                       {
                         icon: MapPin,
-                        label: 'Location',
+                        label: t('urlInvLocation'),
                         category: investigationSummary.sectionCategories.location,
                         accent: CATEGORY_THEME[investigationSummary.sectionCategories.location].accent,
                         content: (
@@ -580,7 +593,7 @@ export function UrlInvestigation() {
                                     color: CATEGORY_THEME[card.category].accent,
                                   }}
                                 >
-                                  {categoryLabel(card.category)}
+                                  {getCategoryLabel(card.category)}
                                 </span>
                               )}
                             </div>
@@ -602,7 +615,7 @@ export function UrlInvestigation() {
                     <div className="flex items-center justify-between gap-4 mb-5">
                       <div className="flex items-center gap-3">
                         <TriangleAlert className="w-5 h-5" style={{ color: CATEGORY_THEME[investigationSummary.sectionCategories.threats].accent }} />
-                        <h3 className={`text-[20px] uppercase tracking-[0.08em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Detected Threats</h3>
+                        <h3 className={`text-[20px] uppercase tracking-[0.08em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('urlInvDetectedThreats')}</h3>
                       </div>
                       <div
                         className="rounded-full border px-4 py-1.5"
@@ -612,7 +625,7 @@ export function UrlInvestigation() {
                           color: CATEGORY_THEME[investigationSummary.sectionCategories.threats].accent,
                         }}
                       >
-                        {categoryLabel(investigationSummary.sectionCategories.threats)} • {investigationSummary.threatCount} flagged
+                        {t('urlInvThreatsFlagged', { category: getCategoryLabel(investigationSummary.sectionCategories.threats), count: investigationSummary.threatCount })}
                       </div>
                     </div>
 
@@ -633,7 +646,7 @@ export function UrlInvestigation() {
                       </div>
                     ) : (
                       <div className={`rounded-2xl border px-5 py-6 ${isDarkMode ? 'bg-[#0F172A] border-white/8 text-[#94A3B8]' : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#64748B]'}`}>
-                        No explicit threat flags were triggered.
+                        {t('urlInvThreatFlagsNone')}
                       </div>
                     )}
                   </motion.div>
@@ -648,9 +661,9 @@ export function UrlInvestigation() {
                         <Server className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className={`text-[20px] uppercase tracking-[0.08em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>Advanced Technical Details</p>
+                        <p className={`text-[20px] uppercase tracking-[0.08em] ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('urlInvAdvancedDetails')}</p>
                         <p className={`text-xs mt-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
-                          Category: {categoryLabel(investigationSummary.sectionCategories.technical)}
+                          {t('urlInvCategoryPrefix', { category: getCategoryLabel(investigationSummary.sectionCategories.technical) })}
                         </p>
                       </div>
                     </div>
