@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Search, Filter, Download, ExternalLink, Calendar, Database, ChevronDown, Check } from 'lucide-react';
 import { Sidebar } from '../components/Sidebar';
 import { useDarkMode } from '../components/DarkModeContext';
+import { useLanguage } from '../components/LanguageContext';
 import { getHistoryVerifications, type HistoryVerificationItem } from '../services/api';
 
 interface HistoryItem {
@@ -12,12 +13,13 @@ interface HistoryItem {
   credibilityScore: number;
   createdAt: string;
   sourcesFound: number;
-  status: string;
+  status: 'likelyTrue' | 'likelyFalse' | 'uncertain';
 }
 
 export function History() {
   const navigate = useNavigate();
   const { isDarkMode } = useDarkMode();
+  const { t, locale } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('date');
@@ -30,10 +32,10 @@ export function History() {
   const statusDropdownRef = useRef<HTMLDivElement>(null);
 
   const statusOptions = [
-    { value: 'all', label: 'All Status' },
-    { value: 'Likely True', label: 'Likely True' },
-    { value: 'Uncertain', label: 'Uncertain' },
-    { value: 'Likely False', label: 'Likely False' },
+    { value: 'all', label: t('historyFilterAllStatus') },
+    { value: 'likelyTrue', label: t('historyStatusLikelyTrue') },
+    { value: 'uncertain', label: t('historyStatusUncertain') },
+    { value: 'likelyFalse', label: t('historyStatusLikelyFalse') },
   ];
 
   useEffect(() => {
@@ -58,25 +60,31 @@ export function History() {
     };
   }, []);
 
-  const normalizeStatus = (item: HistoryVerificationItem, score: number): string => {
+  const normalizeStatus = (item: HistoryVerificationItem, score: number): HistoryItem['status'] => {
     const normalizedVerdict = (item.verdict || '').toLowerCase().trim();
-    if (normalizedVerdict.includes('false')) return 'Likely False';
-    if (normalizedVerdict.includes('true')) return 'Likely True';
-    if (normalizedVerdict.includes('uncertain')) return 'Uncertain';
+    if (normalizedVerdict.includes('false')) return 'likelyFalse';
+    if (normalizedVerdict.includes('true')) return 'likelyTrue';
+    if (normalizedVerdict.includes('uncertain')) return 'uncertain';
 
     const normalizedResult = (item.verification_result || '').toLowerCase();
-    if (normalizedResult === 'true') return 'Likely True';
-    if (normalizedResult === 'false') return 'Likely False';
+    if (normalizedResult === 'true') return 'likelyTrue';
+    if (normalizedResult === 'false') return 'likelyFalse';
 
-    if (score >= 70) return 'Likely True';
-    if (score >= 40) return 'Uncertain';
-    return 'Likely False';
+    if (score >= 70) return 'likelyTrue';
+    if (score >= 40) return 'uncertain';
+    return 'likelyFalse';
+  };
+
+  const getStatusLabel = (status: HistoryItem['status']): string => {
+    if (status === 'likelyTrue') return t('historyStatusLikelyTrue');
+    if (status === 'likelyFalse') return t('historyStatusLikelyFalse');
+    return t('historyStatusUncertain');
   };
 
   const formatDisplayDate = (isoDate: string): string => {
     const parsed = new Date(isoDate);
-    if (Number.isNaN(parsed.getTime())) return 'Unknown date';
-    return parsed.toLocaleDateString(undefined, {
+    if (Number.isNaN(parsed.getTime())) return t('commonUnknownDate');
+    return parsed.toLocaleDateString(locale, {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -107,7 +115,7 @@ export function History() {
       setHistoryData(mapped);
       setRefreshIntervalSeconds(response.refresh_interval_seconds || 30);
     } catch (error) {
-      setHistoryError(error instanceof Error ? error.message : 'Failed to load history records.');
+      setHistoryError(error instanceof Error ? error.message : t('historyLoadError'));
     } finally {
       setIsLoadingHistory(false);
     }
@@ -129,9 +137,9 @@ export function History() {
     return '#EF4444';
   };
 
-  const getStatusColor = (status: string) => {
-    if (status.includes('True')) return '#22C55E';
-    if (status.includes('False')) return '#EF4444';
+  const getStatusColor = (status: HistoryItem['status']) => {
+    if (status === 'likelyTrue') return '#22C55E';
+    if (status === 'likelyFalse') return '#EF4444';
     return '#FBBF24';
   };
 
@@ -144,7 +152,7 @@ export function History() {
     };
   };
 
-  const getStatusStyles = (status: string) => {
+  const getStatusStyles = (status: HistoryItem['status']) => {
     const color = getStatusColor(status);
     return {
       text: color,
@@ -153,7 +161,7 @@ export function History() {
     };
   };
 
-  const selectedStatusLabel = statusOptions.find((option) => option.value === filterStatus)?.label || 'All Status';
+  const selectedStatusLabel = statusOptions.find((option) => option.value === filterStatus)?.label || t('historyFilterAllStatus');
   const itemsPerPage = 8;
 
   const filteredData = historyData
@@ -181,9 +189,9 @@ export function History() {
     }
   }, [currentPage, totalPages]);
 
-  const trueCount = historyData.filter((item) => item.status.includes('True')).length;
-  const falseCount = historyData.filter((item) => item.status.includes('False')).length;
-  const uncertainCount = historyData.filter((item) => item.status === 'Uncertain').length;
+  const trueCount = historyData.filter((item) => item.status === 'likelyTrue').length;
+  const falseCount = historyData.filter((item) => item.status === 'likelyFalse').length;
+  const uncertainCount = historyData.filter((item) => item.status === 'uncertain').length;
   const accuracyRate = historyData.length ? `${((trueCount / historyData.length) * 100).toFixed(1)}%` : '0.0%';
 
   return (
@@ -197,11 +205,11 @@ export function History() {
               <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${isDarkMode ? 'bg-[#1E293B] text-[#22D3EE]' : 'bg-[#EFF6FF] text-[#2563EB]'}`}>
                 <Database className="w-5 h-5" />
               </span>
-              Verification History
+              {t('historyTitle')}
             </h1>
-            <p className={`transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>Browse and manage your past verifications</p>
+            <p className={`transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>{t('historySubtitle')}</p>
             <p className={`text-sm mt-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
-              Live sync from database every {refreshIntervalSeconds}s.
+              {t('historyLiveSync', { seconds: refreshIntervalSeconds })}
             </p>
           </div>
 
@@ -213,7 +221,7 @@ export function History() {
 
           {isLoadingHistory && !historyData.length && (
             <div className={`mb-6 rounded-2xl border px-4 py-3 text-sm ${isDarkMode ? 'border-[#334155] bg-[#0F172A] text-[#93C5FD]' : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]'}`}>
-              Loading verification history from database...
+              {t('historyLoading')}
             </div>
           )}
 
@@ -230,7 +238,7 @@ export function History() {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search claims..."
+                    placeholder={t('historySearchPlaceholder')}
                     className={`w-full pl-12 pr-4 py-3 border rounded-xl outline-none focus:border-[#3B82F6] focus:ring-2 focus:ring-[#3B82F6]/20 transition-all ${
                       isDarkMode
                         ? 'bg-[#0F172A] border-[#334155] text-white placeholder:text-[#64748B]'
@@ -307,7 +315,7 @@ export function History() {
                   </AnimatePresence>
                 </div>
 
-                <button title="Export history" className="px-4 py-3 bg-[#3B82F6] text-white rounded-xl hover:bg-[#2563EB] transition-all">
+                <button title={t('historyExportTitle')} className="px-4 py-3 bg-[#3B82F6] text-white rounded-xl hover:bg-[#2563EB] transition-all">
                   <Download className="w-5 h-5" />
                 </button>
               </div>
@@ -320,7 +328,7 @@ export function History() {
                 ? 'bg-[#1E293B] border-[#334155] hover:shadow-lg hover:shadow-[#3B82F6]/15 hover:border-[#3B82F6]/40'
                 : 'bg-white border-[#E2E8F0] hover:shadow-md hover:border-[#CBD5E1]'
             }`}>
-              <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Total Verifications</p>
+              <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('totalVerifications')}</p>
               <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{historyData.length}</p>
             </div>
             <div className={`rounded-xl border p-4 transition-all duration-300 hover:-translate-y-0.5 ${
@@ -328,7 +336,7 @@ export function History() {
                 ? 'bg-[#1E293B] border-[#334155] hover:shadow-lg hover:shadow-[#22C55E]/15 hover:border-[#22C55E]/40'
                 : 'bg-white border-[#E2E8F0] hover:shadow-md hover:border-[#CBD5E1]'
             }`}>
-              <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>True Claims</p>
+              <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('historyStatusLikelyTrue')}</p>
               <p className="text-2xl text-[#22C55E]">{trueCount}</p>
             </div>
             <div className={`rounded-xl border p-4 transition-all duration-300 hover:-translate-y-0.5 ${
@@ -336,7 +344,7 @@ export function History() {
                 ? 'bg-[#1E293B] border-[#334155] hover:shadow-lg hover:shadow-[#EF4444]/15 hover:border-[#EF4444]/40'
                 : 'bg-white border-[#E2E8F0] hover:shadow-md hover:border-[#CBD5E1]'
             }`}>
-              <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>False Claims</p>
+              <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('historyStatusLikelyFalse')}</p>
               <p className="text-2xl text-[#EF4444]">{falseCount}</p>
             </div>
             <div className={`rounded-xl border p-4 transition-all duration-300 hover:-translate-y-0.5 ${
@@ -344,7 +352,7 @@ export function History() {
                 ? 'bg-[#1E293B] border-[#334155] hover:shadow-lg hover:shadow-[#FBBF24]/15 hover:border-[#FBBF24]/40'
                 : 'bg-white border-[#E2E8F0] hover:shadow-md hover:border-[#CBD5E1]'
             }`}>
-              <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Uncertain</p>
+              <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('historyStatusUncertain')}</p>
               <p className="text-2xl text-[#FBBF24]">{uncertainCount}</p>
             </div>
           </div>
@@ -358,12 +366,12 @@ export function History() {
                   isDarkMode ? 'bg-[#0F172A] border-[#334155]' : 'bg-[#F8FAFC] border-[#E2E8F0]'
                 }`}>
                   <tr>
-                    <th className={`text-left px-6 py-4 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Claim</th>
-                    <th className={`text-left px-6 py-4 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Credibility Score</th>
-                    <th className={`text-left px-6 py-4 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Status</th>
-                    <th className={`text-left px-6 py-4 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Date</th>
-                    <th className={`text-left px-6 py-4 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Sources</th>
-                    <th className={`text-left px-6 py-4 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Action</th>
+                    <th className={`text-left px-6 py-4 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('historyHeaderClaim')}</th>
+                    <th className={`text-left px-6 py-4 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('historyHeaderCredibilityScore')}</th>
+                    <th className={`text-left px-6 py-4 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('historyHeaderStatus')}</th>
+                    <th className={`text-left px-6 py-4 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('historyHeaderDate')}</th>
+                    <th className={`text-left px-6 py-4 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('historyHeaderSources')}</th>
+                    <th className={`text-left px-6 py-4 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('historyHeaderAction')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -409,7 +417,7 @@ export function History() {
                                   boxShadow: statusStyle.shadow,
                                 }}
                               >
-                                {item.status}
+                                {getStatusLabel(item.status)}
                               </div>
                             </td>
                             <td className="px-6 py-4">
@@ -426,7 +434,7 @@ export function History() {
                                 onClick={() => navigate('/verify', { state: { claimText: item.claim, source: 'history' } })}
                                 className="text-[#3B82F6] hover:text-[#2563EB] flex items-center gap-1 text-sm transition-colors"
                               >
-                                View
+                                {t('historyActionView')}
                                 <ExternalLink className="w-4 h-4" />
                               </button>
                             </td>
@@ -446,7 +454,7 @@ export function History() {
                 }`}>
                   <Search className="w-8 h-8 text-[#94A3B8]" />
                 </div>
-                <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>No verifications found</p>
+                <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>{t('historyNoResults')}</p>
               </div>
             )}
           </div>
@@ -454,7 +462,11 @@ export function History() {
           {filteredData.length > 0 && (
             <div className="mt-6 flex items-center justify-between">
               <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
-                Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredData.length)} of {filteredData.length} verifications
+                {t('historyShowingResults', {
+                  from: startIndex + 1,
+                  to: Math.min(startIndex + itemsPerPage, filteredData.length),
+                  total: filteredData.length,
+                })}
               </p>
 
               <div className="flex items-center gap-2">
@@ -471,7 +483,7 @@ export function History() {
                         : 'border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]'
                   }`}
                 >
-                  Previous
+                  {t('historyPrevious')}
                 </button>
 
                 {Array.from({ length: totalPages }, (_, index) => {
@@ -508,7 +520,7 @@ export function History() {
                         : 'border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]'
                   }`}
                 >
-                  Next
+                  {t('historyNext')}
                 </button>
               </div>
             </div>
@@ -520,27 +532,27 @@ export function History() {
                 <Database className="w-6 h-6 text-white" />
               </div>
               <div className="flex-1">
-                <h3 className={`text-lg mb-2 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Dataset Information</h3>
+                <h3 className={`text-lg mb-2 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('historyDatasetInfoTitle')}</h3>
                 <p className={`mb-4 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
-                  Misinformation pattern analysis using <strong className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>live verification records from database</strong>
+                  {t('historyDatasetInfoDesc')} <strong className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('historyDatasetInfoDescEm')}</strong>
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className={`rounded-xl p-4 transition-all duration-300 hover:-translate-y-0.5 ${
                     isDarkMode ? 'bg-[#1E293B] hover:shadow-lg hover:shadow-[#3B82F6]/10' : 'bg-white hover:shadow-md'
                   }`}>
-                    <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Total Verifications</p>
+                    <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('totalVerifications')}</p>
                     <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{historyData.length}</p>
                   </div>
                   <div className={`rounded-xl p-4 transition-all duration-300 hover:-translate-y-0.5 ${
                     isDarkMode ? 'bg-[#1E293B] hover:shadow-lg hover:shadow-[#EF4444]/10' : 'bg-white hover:shadow-md'
                   }`}>
-                    <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Misinformation Detected</p>
+                    <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('historyDatasetMisinfo')}</p>
                     <p className="text-2xl text-[#EF4444]">{falseCount}</p>
                   </div>
                   <div className={`rounded-xl p-4 transition-all duration-300 hover:-translate-y-0.5 ${
                     isDarkMode ? 'bg-[#1E293B] hover:shadow-lg hover:shadow-[#22C55E]/10' : 'bg-white hover:shadow-md'
                   }`}>
-                    <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Accuracy Rate</p>
+                    <p className={`text-sm mb-1 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('historyDatasetAccuracy')}</p>
                     <p className="text-2xl text-[#22C55E]">{accuracyRate}</p>
                   </div>
                 </div>

@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { FeatureCard } from '../components/FeatureCard';
 import { useDarkMode } from '../components/DarkModeContext';
+import { useLanguage } from '../components/LanguageContext';
 
 function GlowCard({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -63,28 +64,29 @@ export function LandingPage() {
   const [claim, setClaim] = useState('');
   const navigate = useNavigate();
   const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const { t, locale } = useLanguage();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const dashboardStats = [
-    { label: 'Total Verifications', value: '1,284', change: '+12.5%', trend: 'up',   icon: Activity,     color: '#3B82F6' },
-    { label: 'True Claims',         value: '892',   change: '+8.2%',  trend: 'up',   icon: CheckCircle2, color: '#22C55E' },
-    { label: 'False Claims',        value: '234',   change: '-5.1%',  trend: 'down', icon: XCircle,      color: '#EF4444' },
-    { label: 'Uncertain',           value: '158',   change: '+3.4%',  trend: 'up',   icon: AlertCircle,  color: '#FBBF24' },
+    { label: t('totalVerifications'), value: '1,284', change: '+12.5%', trend: 'up',   icon: Activity,     color: '#3B82F6' },
+    { label: t('dashboardStatTrueClaims'),  value: '892',   change: '+8.2%',  trend: 'up',   icon: CheckCircle2, color: '#22C55E' },
+    { label: t('dashboardStatFalseClaims'), value: '234',   change: '-5.1%',  trend: 'down', icon: XCircle,      color: '#EF4444' },
+    { label: t('dashboardStatUncertain'),   value: '158',   change: '+3.4%',  trend: 'up',   icon: AlertCircle,  color: '#FBBF24' },
   ];
 
   const recentVerifications = [
-    { id: 1, claim: 'Government banned petrol cars in 2026',        score: 82, status: 'Likely True',   date: 'March 11, 2026', sources: 12 },
-    { id: 2, claim: 'New vaccine prevents all respiratory diseases', score: 23, status: 'Likely False',  date: 'March 10, 2026', sources: 8  },
-    { id: 3, claim: 'Tech company announces major layoffs',          score: 91, status: 'Verified True', date: 'March 9, 2026',  sources: 24 },
-    { id: 4, claim: 'Climate summit delayed to 2027',                score: 56, status: 'Uncertain',     date: 'March 8, 2026',  sources: 6  },
+    { id: 1, claim: t('landingDemoClaim1'), score: 82, status: t('historyStatusLikelyTrue'), date: '2026-03-11', sources: 12 },
+    { id: 2, claim: t('landingDemoClaim2'), score: 23, status: t('historyStatusLikelyFalse'), date: '2026-03-10', sources: 8 },
+    { id: 3, claim: t('landingDemoClaim3'), score: 91, status: t('historyStatusVerifiedTrue'), date: '2026-03-09', sources: 24 },
+    { id: 4, claim: t('landingDemoClaim4'), score: 56, status: t('historyStatusUncertain'), date: '2026-03-08', sources: 6 },
   ];
 
   const trendingTopics = [
-    { topic: 'Electric Vehicles', count: 234, trend: 'up'   },
-    { topic: 'Climate Policy',    count: 189, trend: 'up'   },
-    { topic: 'Healthcare',        count: 156, trend: 'down' },
-    { topic: 'Technology',        count: 142, trend: 'up'   },
-    { topic: 'Politics',          count: 98,  trend: 'down' },
+    { topic: t('landingTopic1'), count: 234, trend: 'up' },
+    { topic: t('landingTopic2'), count: 189, trend: 'up' },
+    { topic: t('landingTopic3'), count: 156, trend: 'down' },
+    { topic: t('landingTopic4'), count: 142, trend: 'up' },
+    { topic: t('landingTopic5'), count: 98, trend: 'down' },
   ];
 
   const getScoreColor = (score: number) => {
@@ -94,11 +96,11 @@ export function LandingPage() {
   };
 
   const sidebarNavItems = [
-    { icon: LayoutDashboard, label: 'Dashboard',            path: '/dashboard'    },
-    { icon: Search,          label: 'Verify Claim',         path: '/verify'       },
-    { icon: HistoryIcon,     label: 'Verification History', path: '/history'      },
-    { icon: ImageIcon,       label: 'Image Verification',   path: '/verify-image' },
-    { icon: Settings,        label: 'Settings',             path: '/settings'     },
+    { icon: LayoutDashboard, label: t('navDashboard'),         path: '/dashboard'    },
+    { icon: Search,          label: t('navVerify'),            path: '/verify'       },
+    { icon: HistoryIcon,     label: t('navHistory'),           path: '/history'      },
+    { icon: ImageIcon,       label: t('navImageVerification'), path: '/verify-image' },
+    { icon: Settings,        label: t('navSettings'),          path: '/settings'     },
   ];
 
   const handleVerify = () => {
@@ -109,72 +111,76 @@ export function LandingPage() {
 
   const fakeNewsOrigins = [
     {
-      name: 'Infowars',
+      nameKey: 'landingOrigin1Name',
       domain: 'infowars.com',
-      category: 'Conspiracy Theory',
-      origin: 'United States',
+      categoryKey: 'landingOrigin1Category',
+      originKey: 'landingOriginCountryUs',
       threatLevel: 'Critical',
       monthlyReach: '22M+',
-      description:
-        'Founded by Alex Jones, Infowars is one of the most prolific sources of conspiracy theories globally — from fabricated government plots to dangerous health misinformation that has influenced real-world violence and policy debates.',
-      topics: ['Political Conspiracy', 'Health Misinformation', 'Anti-Government']
+      descriptionKey: 'landingOrigin1Description',
+      topicKeys: ['landingOrigin1Topic1', 'landingOrigin1Topic2', 'landingOrigin1Topic3']
     },
     {
-      name: 'Natural News',
+      nameKey: 'landingOrigin2Name',
       domain: 'naturalnews.com',
-      category: 'Health Misinformation',
-      origin: 'United States',
+      categoryKey: 'landingOrigin2Category',
+      originKey: 'landingOriginCountryUs',
       threatLevel: 'Critical',
       monthlyReach: '14M+',
-      description:
-        'A pseudoscience website notorious for spreading anti-vaccine propaganda, cancer cure hoaxes, and COVID-19 denial. Repeatedly flagged by WHO and CDC for publishing medically dangerous misinformation.',
-      topics: ['Anti-Vaccine', 'Pseudoscience', 'COVID Denial']
+      descriptionKey: 'landingOrigin2Description',
+      topicKeys: ['landingOrigin2Topic1', 'landingOrigin2Topic2', 'landingOrigin2Topic3']
     },
     {
-      name: 'RT (Russia Today)',
+      nameKey: 'landingOrigin3Name',
       domain: 'rt.com',
-      category: 'State Propaganda',
-      origin: 'Russia',
+      categoryKey: 'landingOrigin3Category',
+      originKey: 'landingOriginCountryRu',
       threatLevel: 'High',
       monthlyReach: '100M+',
-      description:
-        'State-funded Russian broadcaster operating as a geopolitical disinformation tool. Amplifies divisive narratives, election interference claims, and anti-Western propaganda across 100+ countries in multiple languages.',
-      topics: ['State Propaganda', 'Election Interference', 'Geopolitical Disinformation']
+      descriptionKey: 'landingOrigin3Description',
+      topicKeys: ['landingOrigin3Topic1', 'landingOrigin3Topic2', 'landingOrigin3Topic3']
     },
     {
-      name: 'The Gateway Pundit',
+      nameKey: 'landingOrigin4Name',
       domain: 'thegatewaypundit.com',
-      category: 'Political Misinformation',
-      origin: 'United States',
+      categoryKey: 'landingOrigin4Category',
+      originKey: 'landingOriginCountryUs',
       threatLevel: 'High',
       monthlyReach: '18M+',
-      description:
-        'A far-right political blog with a documented history of publishing fabricated stories about elections, public figures, and political opponents. Listed by NewsGuard as one of the most prolific spreaders of election misinformation.',
-      topics: ['Election Fraud Claims', 'Political Fabrication', 'Far-Right Narrative']
+      descriptionKey: 'landingOrigin4Description',
+      topicKeys: ['landingOrigin4Topic1', 'landingOrigin4Topic2', 'landingOrigin4Topic3']
     },
     {
-      name: 'YourNewsWire / NewsPunch',
+      nameKey: 'landingOrigin5Name',
       domain: 'newspunch.com',
-      category: 'Fabricated News',
-      origin: 'United Kingdom',
+      categoryKey: 'landingOrigin5Category',
+      originKey: 'landingOriginCountryUk',
       threatLevel: 'High',
       monthlyReach: '9M+',
-      description:
-        'Originally YourNewsWire, rebranded as NewsPunch after multiple platform bans. Specializes in completely fabricated celebrity quotes, fake government announcements, and sensational health hoaxes designed to go viral.',
-      topics: ['Fabricated Quotes', 'Celebrity Hoaxes', 'Health Hoaxes']
+      descriptionKey: 'landingOrigin5Description',
+      topicKeys: ['landingOrigin5Topic1', 'landingOrigin5Topic2', 'landingOrigin5Topic3']
     },
     {
-      name: 'ZeroHedge',
+      nameKey: 'landingOrigin6Name',
       domain: 'zerohedge.com',
-      category: 'Financial Conspiracy',
-      origin: 'United States',
+      categoryKey: 'landingOrigin6Category',
+      originKey: 'landingOriginCountryUs',
       threatLevel: 'Medium',
       monthlyReach: '35M+',
-      description:
-        'A financial and political blog that mixes legitimate market commentary with unverified conspiracy theories, anonymous sourcing, and COVID-19 misinformation. Banned from Google Ads for policy violations.',
-      topics: ['Economic Conspiracy', 'COVID Misinformation', 'Anonymous Sourcing']
+      descriptionKey: 'landingOrigin6Description',
+      topicKeys: ['landingOrigin6Topic1', 'landingOrigin6Topic2', 'landingOrigin6Topic3']
     }
   ];
+
+  const formatDemoDate = (isoDate: string) => {
+    const parsed = new Date(isoDate);
+    if (Number.isNaN(parsed.getTime())) return t('commonUnknownDate');
+    return parsed.toLocaleDateString(locale, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
 
   const threatColors: Record<string, { bg: string; text: string; border: string }> = {
     Critical: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30' },
@@ -185,33 +191,33 @@ export function LandingPage() {
   const features = [
     {
       icon: Shield,
-      title: 'Credibility Score',
-      description: 'AI-powered analysis provides instant credibility ratings based on trusted sources and fact-checking databases.'
+      title: t('featureCredibilityTitle'),
+      description: t('featureCredibilityDesc')
     },
     {
       icon: Search,
-      title: 'Multi-Source Verification',
-      description: 'Cross-references claims against thousands of verified news outlets and academic databases worldwide.'
+      title: t('featureMultiSourceTitle'),
+      description: t('featureMultiSourceDesc')
     },
     {
       icon: Globe,
-      title: 'Fake Website Detection',
-      description: 'Identifies suspicious domains and known misinformation sources using advanced threat intelligence.'
+      title: t('featureFakeSiteTitle'),
+      description: t('featureFakeSiteDesc')
     },
     {
       icon: Clock,
-      title: 'News Timeline',
-      description: 'Visualize when and where claims first appeared across different sources and platforms.'
+      title: t('featureTimelineTitle'),
+      description: t('featureTimelineDesc')
     },
     {
       icon: Brain,
-      title: 'AI Explanation',
-      description: 'Get detailed breakdowns of why a claim is rated true, false, or uncertain with supporting evidence.'
+      title: t('featureAiExplanationTitle'),
+      description: t('featureAiExplanationDesc')
     },
     {
       icon: ImageIcon,
-      title: 'Image Claim Verification',
-      description: 'Upload viral images to extract and verify embedded text claims using OCR and fact-checking.'
+      title: t('featureImageTitle'),
+      description: t('featureImageDesc')
     }
   ];
 
@@ -240,7 +246,7 @@ export function LandingPage() {
                   ? 'bg-[#1F2937] text-[#22D3EE] hover:bg-[#374151]' 
                   : 'bg-[#F1F5F9] text-[#64748B] hover:bg-[#E2E8F0]'
               }`}
-              aria-label="Toggle dark mode"
+              aria-label={t('landingAriaToggleDarkMode')}
             >
               {isDarkMode ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
             </button>
@@ -253,7 +259,7 @@ export function LandingPage() {
                   ? 'bg-[#1F2937] text-[#F9FAFB] hover:bg-[#374151]'
                   : 'bg-[#F1F5F9] text-[#0F172A] hover:bg-[#E2E8F0]'
               }`}
-              aria-label="Go to dashboard"
+              aria-label={t('landingAriaGoToDashboard')}
             >
               <Menu className="w-5 h-5" />
             </button>
@@ -278,19 +284,19 @@ export function LandingPage() {
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#3B82F6]/10 border border-[#3B82F6]/20 rounded-full mb-6">
               <Sparkles className="w-4 h-4 text-[#3B82F6]" />
-              <span className="text-sm text-[#3B82F6]">Trace the Origin of Truth</span>
+              <span className="text-sm text-[#3B82F6]">{t('landingBadge')}</span>
             </div>
             
             <h1 className={`text-6xl mb-6 max-w-4xl mx-auto leading-tight ${
               isDarkMode ? 'text-white' : 'text-[#0F172A]'
             }`}>
-              Verify News Before You Believe It
+              {t('landingHeroTitle')}
             </h1>
 
             <p className={`text-xl max-w-3xl mx-auto mb-12 ${
               isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'
             }`}>
-              OriginX analyzes global news sources, detects fake websites, and provides credibility scores for viral claims.
+              {t('landingHeroSubtitle')}
             </p>
 
             {/* Search Bar */}
@@ -308,7 +314,7 @@ export function LandingPage() {
                   value={claim}
                   onChange={(e) => setClaim(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleVerify()}
-                  placeholder="Enter a news claim to verify..."
+                  placeholder={t('landingSearchPlaceholder')}
                   className={`flex-1 px-6 py-4 bg-transparent outline-none transition-all duration-200 cursor-text ${
                     isDarkMode ? 'text-[#F9FAFB] placeholder:text-[#9CA3AF]' : 'text-[#0F172A] placeholder:text-[#94A3B8]'
                   }`}
@@ -318,7 +324,7 @@ export function LandingPage() {
                   className="px-8 py-4 bg-gradient-to-r from-[#3B82F6] to-[#22D3EE] text-white rounded-xl hover:shadow-2xl hover:shadow-[#3B82F6]/40 hover:scale-105 transition-all duration-300 flex items-center gap-2 group cursor-pointer"
                 >
                   <Sparkles className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
-                  <span className="font-medium">Verify Claim</span>
+                  <span className="font-medium">{t('landingVerifyCta')}</span>
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-300" />
                 </button>
               </div>
@@ -342,15 +348,15 @@ export function LandingPage() {
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-full mb-6">
               <AlertTriangle className="w-4 h-4 text-red-400" />
-              <span className="text-sm text-red-400 font-medium">Threat Intelligence</span>
+              <span className="text-sm text-red-400 font-medium">{t('landingThreatIntelligence')}</span>
             </div>
             <h2 className={`text-4xl mb-4 ${
               isDarkMode ? 'text-white' : 'text-[#0F172A]'
-            }`}>Top Fake News Origins</h2>
+            }`}>{t('landingFakeNewsOriginsTitle')}</h2>
             <p className={`text-xl max-w-2xl mx-auto ${
               isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'
             }`}>
-              Know the sources. These are the most documented originators of viral misinformation tracked by global fact-checkers.
+              {t('landingFakeNewsOriginsDesc')}
             </p>
           </motion.div>
 
@@ -375,7 +381,7 @@ export function LandingPage() {
                     <div>
                       <h3 className={`text-lg font-semibold ${
                         isDarkMode ? 'text-white' : 'text-[#0F172A]'
-                      }`}>{origin.name}</h3>
+                      }`}>{t(origin.nameKey)}</h3>
                       <span className={`text-xs font-mono ${
                         isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'
                       }`}>{origin.domain}</span>
@@ -383,7 +389,7 @@ export function LandingPage() {
                     <span className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-full border ${
                       threat.bg
                     } ${threat.text} ${threat.border}`}>
-                      {origin.threatLevel}
+                      {origin.threatLevel === 'Critical' ? t('landingThreatLevelCritical') : origin.threatLevel === 'High' ? t('landingThreatLevelHigh') : t('landingThreatLevelMedium')}
                     </span>
                   </div>
 
@@ -393,19 +399,19 @@ export function LandingPage() {
                       isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'
                     }`}>
                       <Tag className="w-3.5 h-3.5 text-[#3B82F6]" />
-                      {origin.category}
+                      {t(origin.categoryKey)}
                     </div>
                     <div className={`flex items-center gap-1.5 text-xs ${
                       isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'
                     }`}>
                       <MapPin className="w-3.5 h-3.5 text-[#22D3EE]" />
-                      {origin.origin}
+                      {t(origin.originKey)}
                     </div>
                     <div className={`flex items-center gap-1.5 text-xs ${
                       isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'
                     }`}>
                       <TrendingUp className="w-3.5 h-3.5 text-orange-400" />
-                      {origin.monthlyReach} monthly reach
+                      {t('landingMonthlyReach', { reach: origin.monthlyReach })}
                     </div>
                   </div>
 
@@ -413,12 +419,12 @@ export function LandingPage() {
                   <p className={`text-sm leading-relaxed ${
                     isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'
                   }`}>
-                    {origin.description}
+                    {t(origin.descriptionKey)}
                   </p>
 
                   {/* Topic Tags */}
                   <div className="flex flex-wrap gap-2 mt-auto pt-2">
-                    {origin.topics.map((topic, ti) => (
+                    {origin.topicKeys.map((topicKey, ti) => (
                       <span
                         key={ti}
                         className={`text-xs px-2.5 py-1 rounded-full border ${
@@ -427,7 +433,7 @@ export function LandingPage() {
                             : 'bg-white border-[#E2E8F0] text-[#64748B]'
                         }`}
                       >
-                        {topic}
+                        {t(topicKey)}
                       </span>
                     ))}
                   </div>
@@ -444,8 +450,8 @@ export function LandingPage() {
       }`}>
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className={`text-4xl mb-4 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Powerful Features</h2>
-            <p className={`text-xl ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Everything you need to combat misinformation</p>
+            <h2 className={`text-4xl mb-4 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('landingFeaturesTitle')}</h2>
+            <p className={`text-xl ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('landingFeaturesSubtitle')}</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -471,13 +477,13 @@ export function LandingPage() {
             viewport={{ once: true }}
             className="bg-gradient-to-br from-[#3B82F6] to-[#22D3EE] rounded-3xl p-12 text-center shadow-2xl"
           >
-            <h2 className="text-4xl text-white mb-4">Ready to fight misinformation?</h2>
-            <p className="text-xl text-white/90 mb-8">Join thousands of users verifying news every day</p>
+            <h2 className="text-4xl text-white mb-4">{t('landingCtaTitle')}</h2>
+            <p className="text-xl text-white/90 mb-8">{t('landingCtaSubtitle')}</p>
             <Link
               to="/verify"
               className="inline-flex items-center gap-2 px-8 py-4 bg-white text-[#3B82F6] rounded-xl hover:shadow-xl transition-all group"
             >
-              <span>Start Verifying</span>
+              <span>{t('landingCtaButton')}</span>
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Link>
           </motion.div>
@@ -497,32 +503,32 @@ export function LandingPage() {
                 </div>
                   <span className={`text-xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>OriginX</span>
               </div>
-              <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Trace the Origin of Truth</p>
+              <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('appTagline')}</p>
             </div>
 
             <div>
-              <h3 className={`text-sm mb-4 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Product</h3>
+              <h3 className={`text-sm mb-4 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('footerProduct')}</h3>
               <div className="flex flex-col gap-2">
-                <Link to="/verify" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Verify Claims</Link>
-                <Link to="/dashboard" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Dashboard</Link>
+                <Link to="/verify" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('footerVerifyClaims')}</Link>
+                <Link to="/dashboard" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('navDashboard')}</Link>
               </div>
             </div>
 
             <div>
-              <h3 className={`text-sm mb-4 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Company</h3>
+              <h3 className={`text-sm mb-4 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('footerCompany')}</h3>
               <div className="flex flex-col gap-2">
-                <a href="#" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>About</a>
-                <a href="#" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Blog</a>
-                <a href="#" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Careers</a>
+                <a href="#" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('footerAbout')}</a>
+                <a href="#" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('footerBlog')}</a>
+                <a href="#" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('footerCareers')}</a>
               </div>
             </div>
 
             <div>
-              <h3 className={`text-sm mb-4 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>Legal</h3>
+              <h3 className={`text-sm mb-4 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('footerLegal')}</h3>
               <div className="flex flex-col gap-2">
-                <a href="#" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Privacy</a>
-                <a href="#" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Terms</a>
-                <a href="#" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>Security</a>
+                <a href="#" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('footerPrivacy')}</a>
+                <a href="#" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('footerTerms')}</a>
+                <a href="#" className={`text-sm hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('footerSecurity')}</a>
               </div>
             </div>
           </div>
@@ -530,7 +536,7 @@ export function LandingPage() {
           <div className={`border-t pt-8 flex flex-col md:flex-row items-center justify-between gap-4 ${
             isDarkMode ? 'border-[#1E293B]' : 'border-[#E2E8F0]'
           }`}>
-            <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>© 2026 OriginX. All rights reserved.</p>
+            <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{t('footerCopyright')}</p>
 
             <div className="flex items-center gap-4">
               <a href="#" className={`hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
@@ -579,7 +585,7 @@ export function LandingPage() {
                 </div>
                 <p className={`text-xs mt-1 ${
                   isDarkMode ? 'text-[#9CA3AF]' : 'text-[#94A3B8]'
-                }`}>Trace the Origin of Truth</p>
+                }`}>{t('appTagline')}</p>
               </div>
 
               <nav className="flex-1 p-4">
@@ -617,7 +623,7 @@ export function LandingPage() {
                     {isDarkMode
                       ? <Moon className="w-5 h-5 text-[#22D3EE]" />
                       : <Sun className="w-5 h-5 text-[#FBBF24]" />}
-                    <span className="text-sm">{isDarkMode ? 'Dark Mode' : 'Light Mode'}</span>
+                    <span className="text-sm">{isDarkMode ? t('darkMode') : t('lightMode')}</span>
                   </span>
                   <div className={`w-10 h-6 rounded-full p-1 transition-all duration-300 ${
                     isDarkMode ? 'bg-gradient-to-r from-[#3B82F6] to-[#22D3EE]' : 'bg-[#CBD5E1]'
@@ -629,13 +635,13 @@ export function LandingPage() {
                 </button>
 
                 <div className="rounded-lg p-4 border bg-gradient-to-br from-[#3B82F6]/10 to-[#22D3EE]/10 border-[#3B82F6]/20">
-                  <p className="text-xs text-[#22D3EE] mb-1 font-medium">Total Verifications</p>
+                  <p className="text-xs text-[#22D3EE] mb-1 font-medium">{t('totalVerifications')}</p>
                   <p className={`text-2xl font-bold ${
                     isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'
                   }`}>1,284</p>
                   <p className={`text-xs mt-1 ${
                     isDarkMode ? 'text-[#9CA3AF]' : 'text-[#94A3B8]'
-                  }`}>Completed this month</p>
+                  }`}>{t('completedThisMonth')}</p>
                 </div>
               </div>
             </div>
@@ -647,9 +653,9 @@ export function LandingPage() {
                 <div>
                   <h1 className={`text-3xl font-bold mb-1 ${
                     isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'
-                  }`}>Dashboard</h1>
+                  }`}>{t('navDashboard')}</h1>
                   <p className={isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}>
-                    Overview of your verification activity
+                    {t('dashboardSubtitle')}
                   </p>
                 </div>
                 <button
@@ -718,13 +724,13 @@ export function LandingPage() {
                     <div className="flex items-center justify-between mb-6">
                       <h2 className={`text-xl font-bold ${
                         isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'
-                      }`}>Recent Verifications</h2>
+                      }`}>{t('dashboardRecentVerifications')}</h2>
                       <Link
                         to="/history"
                         onClick={() => setIsMenuOpen(false)}
                         className="text-sm text-[#3B82F6] hover:text-[#2563EB] flex items-center gap-1 font-medium"
                       >
-                        View All <ArrowRight className="w-4 h-4" />
+                        {t('dashboardViewAll')} <ArrowRight className="w-4 h-4" />
                       </Link>
                     </div>
                     <div className="space-y-4">
@@ -757,9 +763,9 @@ export function LandingPage() {
                           <div className={`flex items-center gap-3 text-sm flex-wrap ${
                             isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'
                           }`}>
-                            <span>{v.date}</span>
+                            <span>{formatDemoDate(v.date)}</span>
                             <span>•</span>
-                            <span>{v.sources} sources</span>
+                            <span>{t('commonSourcesCount', { count: v.sources })}</span>
                             <span>•</span>
                             <span className="font-medium" style={{ color: getScoreColor(v.score) }}>
                               {v.status}
@@ -779,7 +785,7 @@ export function LandingPage() {
                   }`}>
                     <h2 className={`text-xl font-bold mb-6 ${
                       isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'
-                    }`}>Trending Topics</h2>
+                    }`}>{t('dashboardTrendingTopics')}</h2>
                     <div className="space-y-4">
                       {trendingTopics.map((t, i) => (
                         <motion.div

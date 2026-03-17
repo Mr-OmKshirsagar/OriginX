@@ -13,10 +13,12 @@ import {
 } from 'lucide-react';
 import { Sidebar } from '../components/Sidebar';
 import { useDarkMode } from '../components/DarkModeContext';
+import { useLanguage } from '../components/LanguageContext';
 import { getDashboardSummary, type DashboardSummaryResponse } from '../services/api';
 
 export function Dashboard() {
   const { isDarkMode } = useDarkMode();
+  const { t, locale } = useLanguage();
   const [dashboardData, setDashboardData] = useState<DashboardSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +29,7 @@ export function Dashboard() {
     const changes = dashboardData?.changes;
     return [
       {
-        label: 'Total Verifications',
+        label: t('totalVerifications'),
         value: String(totals?.total_verifications ?? 0),
         change: changes?.total_verifications ?? '+0.0%',
         trend: (changes?.total_verifications || '+0.0%').startsWith('-') ? 'down' : 'up',
@@ -35,7 +37,7 @@ export function Dashboard() {
         color: '#3B82F6',
       },
       {
-        label: 'True Claims',
+        label: t('dashboardStatTrueClaims'),
         value: String(totals?.true_claims ?? 0),
         change: changes?.true_claims ?? '+0.0%',
         trend: (changes?.true_claims || '+0.0%').startsWith('-') ? 'down' : 'up',
@@ -43,7 +45,7 @@ export function Dashboard() {
         color: '#22C55E',
       },
       {
-        label: 'False Claims',
+        label: t('dashboardStatFalseClaims'),
         value: String(totals?.false_claims ?? 0),
         change: changes?.false_claims ?? '+0.0%',
         trend: (changes?.false_claims || '+0.0%').startsWith('-') ? 'down' : 'up',
@@ -51,7 +53,7 @@ export function Dashboard() {
         color: '#EF4444',
       },
       {
-        label: 'Uncertain',
+        label: t('dashboardStatUncertain'),
         value: String(totals?.uncertain_claims ?? 0),
         change: changes?.uncertain_claims ?? '+0.0%',
         trend: (changes?.uncertain_claims || '+0.0%').startsWith('-') ? 'down' : 'up',
@@ -59,7 +61,7 @@ export function Dashboard() {
         color: '#FBBF24',
       },
     ] as const;
-  }, [dashboardData]);
+  }, [dashboardData, t]);
 
   const recentVerifications = dashboardData?.recent_verifications ?? [];
   const trendingTopics = dashboardData?.trending_topics ?? [];
@@ -67,9 +69,9 @@ export function Dashboard() {
   const formatDate = (value: string) => {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) {
-      return 'Unknown date';
+      return t('commonUnknownDate');
     }
-    return parsed.toLocaleDateString(undefined, {
+    return parsed.toLocaleDateString(locale, {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -85,7 +87,7 @@ export function Dashboard() {
       setDashboardData(response);
       setLastRefresh(new Date());
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : 'Failed to load dashboard data.');
+      setError(fetchError instanceof Error ? fetchError.message : t('dashboardLoadError'));
     } finally {
       setIsLoading(false);
     }
@@ -119,12 +121,12 @@ export function Dashboard() {
               <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${isDarkMode ? 'bg-[#1E293B] text-[#22D3EE]' : 'bg-[#EFF6FF] text-[#2563EB]'}`}>
                 <Activity className="w-5 h-5" />
               </span>
-              Dashboard
+              {t('dashboardTitle')}
             </h1>
-            <p className={`transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>Overview of your verification activity</p>
+            <p className={`transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>{t('dashboardSubtitle')}</p>
             <p className={`text-sm mt-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
-              Real-time database sync every {dashboardData?.refresh_interval_seconds ?? 30}s
-              {lastRefresh ? ` | Last refresh: ${lastRefresh.toLocaleTimeString()}` : ''}
+              {t('dashboardLiveSync', { seconds: dashboardData?.refresh_interval_seconds ?? 30 })}
+              {lastRefresh ? ` | ${t('dashboardLastRefresh', { time: lastRefresh.toLocaleTimeString() })}` : ''}
             </p>
           </div>
 
@@ -136,7 +138,7 @@ export function Dashboard() {
 
           {isLoading && !dashboardData && (
             <div className={`mb-6 rounded-2xl border px-4 py-3 text-sm ${isDarkMode ? 'border-[#334155] bg-[#0F172A] text-[#93C5FD]' : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]'}`}>
-              Loading live dashboard metrics...
+              {t('dashboardLoading')}
             </div>
           )}
 
@@ -151,10 +153,11 @@ export function Dashboard() {
                   transition={{ delay: index * 0.1 }}
                   className={`rounded-2xl border p-6 transition-all duration-300 hover:shadow-2xl hover:-translate-y-0.5 cursor-pointer relative overflow-hidden group ${
                     isDarkMode
-                      ? 'bg-[#1F2937] border-[#374151] shadow-lg shadow-[#3B82F6]/5 hover:shadow-[#3B82F6]/20'
-                      : 'bg-white border-[#E2E8F0] shadow-sm hover:shadow-md'
+                      ? 'bg-[#1F2937] border-[#374151] shadow-lg shadow-[#3B82F6]/5 hover:border-white/80 hover:shadow-[#3B82F6]/20'
+                      : 'bg-white border-[#E2E8F0] shadow-sm hover:border-white hover:shadow-md'
                   }`}
                 >
+                  <div className="absolute inset-0 rounded-2xl border border-white/0 bg-white/0 group-hover:border-white/70 group-hover:bg-white/[0.04] transition-all duration-300 pointer-events-none" />
                   {isDarkMode && (
                     <div className="absolute inset-0 bg-gradient-to-br from-[#3B82F6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   )}
@@ -197,10 +200,10 @@ export function Dashboard() {
                     <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${isDarkMode ? 'bg-[#1E293B] text-[#22D3EE]' : 'bg-[#EFF6FF] text-[#2563EB]'}`}>
                       <CheckCircle2 className="w-4 h-4" />
                     </span>
-                    Recent Verifications
+                    {t('dashboardRecentVerifications')}
                   </h2>
                   <Link to="/history" className="text-sm text-[#3B82F6] hover:text-[#2563EB] flex items-center gap-1 font-medium transition-colors">
-                    View All
+                    {t('dashboardViewAll')}
                     <ArrowRight className="w-4 h-4" />
                   </Link>
                 </div>
@@ -243,7 +246,7 @@ export function Dashboard() {
                         <div className={`flex items-center gap-4 text-sm transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>
                           <span>{formatDate(verification.created_at)}</span>
                           <span>•</span>
-                          <span>{verification.sources} sources</span>
+                          <span>{t('commonSourcesCount', { count: verification.sources })}</span>
                           <span>•</span>
                           <span className="font-medium" style={{ color: getScoreColor(verification.score) }}>
                             {verification.status}
@@ -255,7 +258,7 @@ export function Dashboard() {
 
                   {!recentVerifications.length && !isLoading && (
                     <div className={`rounded-xl border px-4 py-5 text-sm ${isDarkMode ? 'border-[#374151] bg-[#111827] text-[#9CA3AF]' : 'border-[#E2E8F0] bg-[#F8FAFC] text-[#64748B]'}`}>
-                      No verification history found in the database yet.
+                      {t('dashboardNoHistory')}
                     </div>
                   )}
                 </div>
@@ -273,7 +276,7 @@ export function Dashboard() {
                     <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${isDarkMode ? 'bg-[#1E293B] text-[#22D3EE]' : 'bg-[#EFF6FF] text-[#2563EB]'}`}>
                       <TrendingUp className="w-4 h-4" />
                     </span>
-                    Trending Topics
+                    {t('dashboardTrendingTopics')}
                   </h2>
                   <div className="inline-flex items-center gap-2 rounded-full border border-[#EF4444]/20 bg-[#EF4444]/10 px-3 py-1.5">
                     <span className="relative flex h-2.5 w-2.5">
@@ -309,7 +312,7 @@ export function Dashboard() {
 
                   {!trendingTopics.length && !isLoading && (
                     <div className={`rounded-xl border px-4 py-5 text-sm ${isDarkMode ? 'border-[#374151] bg-[#111827] text-[#9CA3AF]' : 'border-[#E2E8F0] bg-[#F8FAFC] text-[#64748B]'}`}>
-                      Not enough records to identify trending topics yet.
+                      {t('dashboardNoTrendingTopics')}
                     </div>
                   )}
                 </div>
@@ -323,7 +326,7 @@ export function Dashboard() {
                 ? 'bg-gradient-to-br from-[#1F2937] to-[#111827] border-[#374151] shadow-lg'
                 : 'bg-gradient-to-br from-[#F8FAFC] to-white border-[#E2E8F0]'
             }`}>
-              <h2 className={`text-xl font-bold mb-6 transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>Quick Actions</h2>
+              <h2 className={`text-xl font-bold mb-6 transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>{t('dashboardQuickActions')}</h2>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Link
@@ -341,8 +344,8 @@ export function Dashboard() {
                     <div className="w-10 h-10 bg-gradient-to-br from-[#3B82F6] to-[#22D3EE] rounded-lg flex items-center justify-center mb-4 shadow-lg shadow-[#3B82F6]/30">
                       <CheckCircle2 className="w-5 h-5 text-white" />
                     </div>
-                    <h3 className={`mb-2 font-semibold group-hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>Verify New Claim</h3>
-                    <p className={`text-sm transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>Start a new verification process</p>
+                    <h3 className={`mb-2 font-semibold group-hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>{t('dashboardActionVerifyTitle')}</h3>
+                    <p className={`text-sm transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>{t('dashboardActionVerifyDesc')}</p>
                   </div>
                 </Link>
 
@@ -361,8 +364,8 @@ export function Dashboard() {
                     <div className="w-10 h-10 bg-gradient-to-br from-[#3B82F6] to-[#22D3EE] rounded-lg flex items-center justify-center mb-4 shadow-lg shadow-[#3B82F6]/30">
                       <Activity className="w-5 h-5 text-white" />
                     </div>
-                    <h3 className={`mb-2 font-semibold group-hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>View History</h3>
-                    <p className={`text-sm transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>Browse past verifications</p>
+                    <h3 className={`mb-2 font-semibold group-hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>{t('dashboardActionHistoryTitle')}</h3>
+                    <p className={`text-sm transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>{t('dashboardActionHistoryDesc')}</p>
                   </div>
                 </Link>
 
@@ -381,8 +384,8 @@ export function Dashboard() {
                     <div className="w-10 h-10 bg-gradient-to-br from-[#3B82F6] to-[#22D3EE] rounded-lg flex items-center justify-center mb-4 shadow-lg shadow-[#3B82F6]/30">
                       <Globe className="w-5 h-5 text-white" />
                     </div>
-                    <h3 className={`mb-2 font-semibold group-hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>Settings</h3>
-                    <p className={`text-sm transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>Manage your preferences</p>
+                    <h3 className={`mb-2 font-semibold group-hover:text-[#3B82F6] transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>{t('dashboardActionSettingsTitle')}</h3>
+                    <p className={`text-sm transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>{t('dashboardActionSettingsDesc')}</p>
                   </div>
                 </Link>
               </div>

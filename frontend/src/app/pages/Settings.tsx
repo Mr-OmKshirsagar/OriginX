@@ -1,18 +1,12 @@
 import { Globe, Moon, Sun } from 'lucide-react';
 import { Sidebar } from '../components/Sidebar';
 import { useDarkMode } from '../components/DarkModeContext';
-import { AppLanguage, useLanguage } from '../components/LanguageContext';
+import { useLanguage } from '../components/LanguageContext';
+import { SUPPORTED_LANGUAGES } from '../i18n/config';
 
 export function Settings() {
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   const { language, setLanguage, t } = useLanguage();
-
-  const languageOptions: Array<{ value: AppLanguage; label: string }> = [
-    { value: 'en', label: 'English' },
-    { value: 'es', label: 'Espanol' },
-    { value: 'fr', label: 'Francais' },
-    { value: 'hi', label: 'Hindi' },
-  ];
 
   return (
     <div className={`min-h-screen transition-all duration-300 ${isDarkMode ? 'bg-[#0B1120]' : 'bg-[#F8FAFC]'}`}>
@@ -97,16 +91,16 @@ export function Settings() {
             </label>
             <select
               value={language}
-              onChange={(event) => setLanguage(event.target.value as AppLanguage)}
+              onChange={(event) => setLanguage(event.target.value as typeof language)}
               className={`w-full px-4 py-3 border rounded-xl outline-none focus:border-[#3B82F6] focus:ring-2 focus:ring-[#3B82F6]/20 transition-all duration-200 ${
                 isDarkMode
                   ? 'bg-[#111827] border-[#374151] text-[#F9FAFB]'
                   : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A]'
               }`}
             >
-              {languageOptions.map((option) => (
+              {SUPPORTED_LANGUAGES.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {t(`languageName_${option.value}`)}
                 </option>
               ))}
             </select>
