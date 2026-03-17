@@ -34,7 +34,6 @@ import { useDarkMode } from '../components/DarkModeContext';
 
 import { useLanguage } from '../components/LanguageContext';
 import { speechSynthesisLocale } from '../i18n/config';
-import { analyzeRedditPropagation, extractTextFromImage, verifyClaim, type RedditPropagationResponse, type VerifyClaimResponse } from '../services/api';
 
 import {
   analyzeAnomalies,
