@@ -23,6 +23,7 @@ export function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [hoveredStatIndex, setHoveredStatIndex] = useState<number | null>(null);
 
   const stats = useMemo(() => {
     const totals = dashboardData?.totals;
@@ -169,19 +170,42 @@ export function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             {stats.map((stat, index) => {
               const Icon = stat.icon;
+              const isHovered = hoveredStatIndex === index;
               return (
                 <motion.div
                   key={index}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className={`rounded-2xl border p-6 transition-all duration-300 hover:shadow-2xl hover:-translate-y-0.5 cursor-pointer relative overflow-hidden group ${
+                  onMouseEnter={() => setHoveredStatIndex(index)}
+                  onMouseLeave={() => setHoveredStatIndex(null)}
+                  className={`rounded-2xl border p-6 transition-all duration-300 hover:-translate-y-0.5 cursor-pointer relative overflow-hidden group ${
                     isDarkMode
-                      ? 'bg-[#1F2937] border-[#374151] shadow-lg shadow-[#3B82F6]/5 hover:border-white/80 hover:shadow-[#3B82F6]/20'
-                      : 'bg-white border-[#E2E8F0] shadow-sm hover:border-white hover:shadow-md'
+                      ? 'bg-[#1F2937] border-[#374151] shadow-lg shadow-[#3B82F6]/5'
+                      : 'bg-white border-[#E2E8F0] shadow-sm'
                   }`}
+                  style={
+                    isHovered
+                      ? {
+                          borderColor: `${stat.color}CC`,
+                          boxShadow: isDarkMode
+                            ? `0 24px 48px ${stat.color}33`
+                            : `0 16px 36px ${stat.color}26`,
+                        }
+                      : undefined
+                  }
                 >
-                  <div className="absolute inset-0 rounded-2xl border border-white/0 bg-white/0 group-hover:border-white/70 group-hover:bg-white/[0.04] transition-all duration-300 pointer-events-none" />
+                  <div
+                    className="absolute inset-0 rounded-2xl border border-white/0 bg-white/0 transition-all duration-300 pointer-events-none"
+                    style={
+                      isHovered
+                        ? {
+                            borderColor: `${stat.color}C0`,
+                            backgroundColor: isDarkMode ? `${stat.color}12` : `${stat.color}0F`,
+                          }
+                        : undefined
+                    }
+                  />
                   {isDarkMode && (
                     <div className="absolute inset-0 bg-gradient-to-br from-[#3B82F6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   )}
@@ -204,7 +228,12 @@ export function Dashboard() {
                       </div>
                     </div>
 
-                    <p className={`text-3xl font-bold mb-1 transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}>{stat.value}</p>
+                    <p
+                      className={`text-3xl font-bold mb-1 transition-colors ${isDarkMode ? 'text-[#F9FAFB]' : 'text-[#0F172A]'}`}
+                      style={isHovered ? { color: stat.color } : undefined}
+                    >
+                      {stat.value}
+                    </p>
                     <p className={`text-sm transition-colors ${isDarkMode ? 'text-[#9CA3AF]' : 'text-[#64748B]'}`}>{stat.label}</p>
                   </div>
                 </motion.div>
