@@ -44,7 +44,10 @@ import {
   type AnomalyDetectionResponse,
   type BotDetectionResponse,
   type PropagationEvent,
+  type RedditEdge,
+  type RedditNode,
   type RedditPropagationResponse,
+  type RedditTimelineEvent,
   type VerifyClaimResponse
 } from '../services/api';
 
@@ -72,6 +75,16 @@ interface SpreadTimelineEvent {
   metric: string;
   dotColor: string;
   lineColor: string;
+}
+
+interface GraphLayoutNode {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  size: number;
+  isPatientZero: boolean;
+  isTopAmplifier: boolean;
 }
 
 interface AnimatedCounterProps {
@@ -185,6 +198,8 @@ function MetricCard({
 }
 
 function SpreadTimelinePanel({ eyebrow, heading, events, isDarkMode }: SpreadTimelinePanelProps) {
+  const hasEvents = events.length > 0;
+
   return (
     <div
       className={`rounded-[28px] border overflow-hidden ${
@@ -197,6 +212,12 @@ function SpreadTimelinePanel({ eyebrow, heading, events, isDarkMode }: SpreadTim
       </div>
 
       <div className="p-8 space-y-6">
+        {!hasEvents && (
+          <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8 text-[#94A3B8]' : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#64748B]'}`}>
+            Timeline data unavailable.
+          </div>
+        )}
+
         {events.map((event, index) => {
           const isLast = index === events.length - 1;
 
@@ -227,7 +248,7 @@ function SpreadTimelinePanel({ eyebrow, heading, events, isDarkMode }: SpreadTim
               <div className={isLast ? '' : 'pb-6'}>
                 <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{event.title}</p>
                 <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{event.detail}</p>
-                <p className={`text-xs mt-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{event.time} â€¢ {event.metric}</p>
+                <p className={`text-xs mt-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{event.time}{event.metric ? ` • ${event.metric}` : ''}</p>
               </div>
             </motion.div>
           );
@@ -332,6 +353,25 @@ export function VerifyClaim() {
     const parsed = new Date(isoDate);
     if (Number.isNaN(parsed.getTime())) return isoDate;
     return parsed.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const formatTimelineTimestamp = (value?: string | null): string => {
+    if (!value) return 'Time unavailable';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleString(locale, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  };
+
+  const summarizeTimelineText = (value?: string | null): string => {
+    const text = (value || '').replace(/\s+/g, ' ').trim();
+    if (!text) return 'Summary unavailable.';
+    if (text.length <= 145) return text;
+    return `${text.slice(0, 142).trimEnd()}...`;
   };
 
   const normalizeText = (value: string): string => value.trim().toLowerCase();
@@ -640,14 +680,82 @@ export function VerifyClaim() {
     }
   ];
 
-  const redditSpreadNodes = redditData?.analysis.spread_nodes ?? 0;
-  const redditEventsCount = redditData?.events_count ?? 0;
-  const redditPatientZero = redditData?.analysis.patient_zero ?? 'No primary source identified';
-  const redditSuperSpreader = redditData?.analysis.super_spreader ?? 'No amplification leader detected';
+  const redditNodes: RedditNode[] = redditData?.nodes
+    ?? redditData?.analysis.nodes
+    ?? redditData?.analysis.graph?.nodes?.map((nodeId) => ({ id: nodeId, label: nodeId }))
+    ?? [];
+  const redditEdges: RedditEdge[] = redditData?.edges ?? redditData?.analysis.edges ?? redditData?.analysis.graph?.edges ?? [];
+  const redditSpreadNodes = redditNodes.length || redditData?.analysis.spread_nodes || 0;
+  const redditEventsCount = redditData?.events_captured ?? redditData?.analysis.events_captured ?? redditData?.events_count ?? 0;
+  const redditPatientZero = redditData?.patient_zero ?? redditData?.analysis.patient_zero ?? null;
+  const redditTopAmplifier = redditData?.top_amplifier ?? redditData?.analysis.top_amplifier ?? redditData?.analysis.super_spreader ?? null;
   const redditEvents = redditData?.events ?? [];
+  const redditTimelinePayload: RedditTimelineEvent[] = redditData?.timeline ?? redditData?.analysis.timeline ?? [];
   const redditAnomalies = redditAnomalyData?.anomalies ?? [];
   const suspiciousAccounts = redditBotData?.suspicious_accounts ?? [];
   const coordinatedClusters = redditBotData?.clusters ?? [];
+  const redditPatientZeroLabel = isLoadingReddit ? t('verifyAnalyzingRedditThreads') : (redditPatientZero || 'Pending backend data');
+  const redditTopAmplifierLabel = isLoadingReddit ? t('verifyMeasuringAmplification') : (redditTopAmplifier || 'Pending backend data');
+  const redditEventsCapturedLabel = isLoadingReddit ? t('verifyLoading') : (redditEventsCount > 0 ? String(redditEventsCount) : 'Pending backend data');
+  const redditTimelineSourceEvents = [...redditEvents].sort((a, b) => {
+    const left = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+    const right = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+    return left - right;
+  });
+  const redditTimelineEvents: SpreadTimelineEvent[] = redditTimelinePayload.map((event, index) => {
+    const sourceEvent = redditTimelineSourceEvents[index];
+    const username = event.username || event.title || sourceEvent?.user_id || `Event ${index + 1}`;
+    const summary = event.summary || summarizeTimelineText(event.detail || sourceEvent?.claim_text);
+    const metadata = event.subreddit
+      ? `r/${event.subreddit}`
+      : sourceEvent?.subreddit
+        ? `r/${sourceEvent.subreddit}`
+        : event.metadata
+          ? event.metadata
+          : sourceEvent?.domain || event.metric || '';
+
+    return {
+      title: username,
+      detail: summary,
+      time: formatTimelineTimestamp(event.time || sourceEvent?.timestamp),
+      metric: metadata,
+      dotColor: event.dot_color || '#FF8A5B',
+      lineColor: event.line_color || '#FF8A5B'
+    };
+  });
+  const redditCenterNodeId = redditNodes.find((node) => node.is_patient_zero)?.id ?? redditNodes[0]?.id ?? null;
+  const redditOrbitNodeIds = redditNodes
+    .filter((node) => node.id !== redditCenterNodeId)
+    .map((node) => node.id);
+  const redditGraphNodes: GraphLayoutNode[] = redditNodes.map((node) => {
+    const isCenter = node.id === redditCenterNodeId;
+    if (isCenter) {
+      return {
+        id: node.id,
+        label: node.label || node.id,
+        x: 50,
+        y: 50,
+        size: 34,
+        isPatientZero: Boolean(node.is_patient_zero),
+        isTopAmplifier: Boolean(node.is_top_amplifier)
+      };
+    }
+
+    const orbitIndex = Math.max(redditOrbitNodeIds.indexOf(node.id), 0);
+    const orbitTotal = Math.max(redditOrbitNodeIds.length, 1);
+    const angle = (orbitIndex / orbitTotal) * Math.PI * 2 - Math.PI / 2;
+    const radius = 28 + ((orbitIndex % 3) * 7);
+    return {
+      id: node.id,
+      label: node.label || node.id,
+      x: 50 + (Math.cos(angle) * radius),
+      y: 50 + (Math.sin(angle) * radius),
+      size: node.is_top_amplifier ? 26 : 22,
+      isPatientZero: Boolean(node.is_patient_zero),
+      isTopAmplifier: Boolean(node.is_top_amplifier)
+    };
+  });
+  const redditGraphNodeMap = new Map(redditGraphNodes.map((node) => [node.id, node]));
 
   const getAnomalyTypeLabel = (type: string) => {
     switch (type) {
@@ -715,40 +823,7 @@ export function VerifyClaim() {
     reddit: {
       eyebrow: t('verifyNarrativeSpreadTimeline'),
       heading: t('verifyPropagationEvents'),
-      events: [
-        {
-          title: t('verifyTimelineClaimPosted'),
-          detail: t('verifyTimelineClaimPostedDetail'),
-          time: t('verifyTimeHoursAgo', { n: 3 }),
-          metric: t('verifyMetricOneNode'),
-          dotColor: '#FF4500',
-          lineColor: '#FF4500'
-        },
-        {
-          title: t('verifyTimelineInitialSpread'),
-          detail: t('verifyTimelineInitialSpreadDetail'),
-          time: t('verifyTimeHoursAgo', { n: 2 }),
-          metric: t('verifyMetricNodes', { count: 4 }),
-          dotColor: '#FFB366',
-          lineColor: '#FFB366'
-        },
-        {
-          title: t('verifyTimelinePeakEngagement'),
-          detail: t('verifyTimelinePeakEngagementDetail'),
-          time: t('verifyTimeOneHourAgo'),
-          metric: t('verifyMetricNodes', { count: 6 }),
-          dotColor: '#FF8A5B',
-          lineColor: '#FF8A5B'
-        },
-        {
-          title: t('verifyTimelineCurrentStatus'),
-          detail: t('verifyTimelineCurrentStatusDetailReddit'),
-          time: t('verifyNow'),
-          metric: t('verifyTotalNodesTracked', { count: redditSpreadNodes || 11 }),
-          dotColor: '#FBBF24',
-          lineColor: '#FBBF24'
-        }
-      ]
+      events: redditTimelineEvents
     },
     x: {
       eyebrow: t('verifyNarrativeSpreadTimeline'),
@@ -2150,62 +2225,65 @@ export function VerifyClaim() {
 
                           {/* Network nodes visualization */}
                           <div className="relative w-full h-full">
-                            {/* Center node */}
-                            <motion.div
-                              initial={{ scale: 0, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              transition={{ delay: 0.1 }}
-                              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10"
-                            >
-                              <div className="w-8 h-8 rounded-full bg-[#FF4500] shadow-lg shadow-[#FF4500]/50 flex items-center justify-center">
-                                <div className="w-4 h-4 rounded-full bg-white/30" />
+                            {isLoadingReddit ? (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className={`rounded-2xl border px-4 py-3 text-sm ${isDarkMode ? 'border-white/8 bg-white/5 text-[#94A3B8]' : 'border-[#E2E8F0] bg-[#F8FAFC] text-[#64748B]'}`}>
+                                  Loading propagation graph...
+                                </div>
                               </div>
-                            </motion.div>
+                            ) : redditGraphNodes.length === 0 ? (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className={`rounded-2xl border px-4 py-3 text-sm ${isDarkMode ? 'border-white/8 bg-white/5 text-[#94A3B8]' : 'border-[#E2E8F0] bg-[#F8FAFC] text-[#64748B]'}`}>
+                                  Graph data unavailable.
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
+                                  {redditEdges.map((edge, idx) => {
+                                    const sourceNode = redditGraphNodeMap.get(edge.source);
+                                    const targetNode = redditGraphNodeMap.get(edge.target);
+                                    if (!sourceNode || !targetNode) return null;
+                                    return (
+                                      <line
+                                        key={`${edge.source}-${edge.target}-${idx}`}
+                                        x1={`${sourceNode.x}%`}
+                                        y1={`${sourceNode.y}%`}
+                                        x2={`${targetNode.x}%`}
+                                        y2={`${targetNode.y}%`}
+                                        stroke="rgba(255, 138, 91, 0.32)"
+                                        strokeWidth={Math.max(1, Math.min(edge.weight || 1, 4))}
+                                      />
+                                    );
+                                  })}
+                                </svg>
 
-                            {/* Orbiting nodes */}
-                            {[0, 60, 120, 180, 240, 300].map((angle, idx) => {
-                              const rad = (angle * Math.PI) / 180;
-                              const x = 50 + 30 * Math.cos(rad);
-                              const y = 50 + 30 * Math.sin(rad);
-                              return (
-                                <motion.div
-                                  key={idx}
-                                  initial={{ scale: 0, opacity: 0 }}
-                                  animate={{ scale: 1, opacity: 1 }}
-                                  transition={{ delay: 0.15 + idx * 0.05 }}
-                                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-5"
-                                  style={{ transform: `translate(calc(-50% + ${x - 50}%), calc(-50% + ${y - 50}%))` }}
-                                >
-                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shadow-md ${
-                                    idx % 2 === 0
-                                      ? 'bg-[#FF8A5B]/40'
-                                      : 'bg-[#FFB366]/40'
-                                  }`}>
-                                    <div className={`w-2 h-2 rounded-full ${idx % 2 === 0 ? 'bg-[#FF8A5B]' : 'bg-[#FFB366]'}`} />
-                                  </div>
-                                </motion.div>
-                              );
-                            })}
-
-                            {/* Connection lines */}
-                            <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
-                              {[0, 60, 120, 180, 240, 300].map((angle, idx) => {
-                                const rad = (angle * Math.PI) / 180;
-                                const x = 50 + 30 * Math.cos(rad);
-                                const y = 50 + 30 * Math.sin(rad);
-                                return (
-                                  <line
-                                    key={idx}
-                                    x1="50%"
-                                    y1="50%"
-                                    x2={`${x}%`}
-                                    y2={`${y}%`}
-                                    stroke={idx % 2 === 0 ? 'rgba(255, 138, 91, 0.3)' : 'rgba(255, 179, 102, 0.3)'}
-                                    strokeWidth="1"
-                                  />
-                                );
-                              })}
-                            </svg>
+                                {redditGraphNodes.map((node, idx) => (
+                                  <motion.div
+                                    key={node.id}
+                                    initial={{ scale: 0, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    transition={{ delay: 0.1 + idx * 0.04 }}
+                                    className="absolute z-10 -translate-x-1/2 -translate-y-1/2"
+                                    style={{ left: `${node.x}%`, top: `${node.y}%` }}
+                                    title={node.label}
+                                  >
+                                    <div
+                                      className="rounded-full border flex items-center justify-center shadow-lg"
+                                      style={{
+                                        width: `${node.size}px`,
+                                        height: `${node.size}px`,
+                                        background: node.isPatientZero ? '#FF4500' : node.isTopAmplifier ? '#FBBF24' : 'rgba(255, 138, 91, 0.32)',
+                                        borderColor: node.isPatientZero ? 'rgba(255,255,255,0.32)' : node.isTopAmplifier ? 'rgba(251,191,36,0.45)' : 'rgba(255,179,102,0.4)',
+                                        boxShadow: node.isPatientZero ? '0 0 24px rgba(255,69,0,0.45)' : node.isTopAmplifier ? '0 0 20px rgba(251,191,36,0.35)' : '0 0 16px rgba(255,138,91,0.18)'
+                                      }}
+                                    >
+                                      <div className="h-2.5 w-2.5 rounded-full bg-white/40" />
+                                    </div>
+                                  </motion.div>
+                                ))}
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2213,15 +2291,15 @@ export function VerifyClaim() {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
                           <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyEventsCaptured')}</p>
-                          <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{isLoadingReddit ? t('verifyLoading') : redditEventsCount}</p>
+                          <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{redditEventsCapturedLabel}</p>
                         </div>
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
                           <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyPatientZero')}</p>
-                          <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{isLoadingReddit ? t('verifyAnalyzingRedditThreads') : redditPatientZero}</p>
+                          <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{redditPatientZeroLabel}</p>
                         </div>
                         <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
                           <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyTopAmplifier')}</p>
-                          <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{isLoadingReddit ? t('verifyMeasuringAmplification') : redditSuperSpreader}</p>
+                          <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{redditTopAmplifierLabel}</p>
                         </div>
                       </div>
 
@@ -2802,3 +2880,4 @@ export function VerifyClaim() {
     </div>
   );
 }
+

@@ -171,5 +171,11 @@ def analyze_reddit_propagation(
         "query": query,
         "events_count": len(events),
         "events": events,
+        "nodes": analysis.get("nodes", []),
+        "edges": analysis.get("edges", []),
+        "events_captured": analysis.get("events_captured", len(events)),
+        "patient_zero": analysis.get("patient_zero"),
+        "top_amplifier": analysis.get("top_amplifier"),
+        "timeline": analysis.get("timeline", []),
         "analysis": analysis,
     }

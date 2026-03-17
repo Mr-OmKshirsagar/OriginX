@@ -39,7 +39,11 @@ def test_analyze_propagation_returns_expected_shape() -> None:
     result = analyze_propagation(events)
 
     assert result["patient_zero"] == "user_102"
+    assert result["events_captured"] == 3
+    assert result["top_amplifier"] in {"user_102", "user_84"}
     assert result["spread_nodes"] == 3
     assert result["super_spreader"] in {"user_102", "user_84"}
+    assert result["nodes"][0]["id"] == "user_102"
+    assert result["timeline"][0]["title"] == "user_102"
     assert "graph" in result
     assert "edges" in result["graph"]

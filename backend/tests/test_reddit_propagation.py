@@ -112,4 +112,10 @@ def test_analyze_reddit_propagation_shape(monkeypatch) -> None:
 
     assert result["source"] == "reddit"
     assert result["query"] == "bridge collapse"
+    assert "nodes" in result
+    assert "edges" in result
+    assert "timeline" in result
+    assert "events_captured" in result
+    assert "patient_zero" in result
+    assert "top_amplifier" in result
     assert "analysis" in result

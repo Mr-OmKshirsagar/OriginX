@@ -93,26 +93,85 @@ def estimate_patient_zero(events: list[dict[str, Any]]) -> str | None:
     return user_id or None
 
 
+def _timeline_colors(index: int) -> tuple[str, str]:
+    palette = [
+        ("#FF4500", "#FF4500"),
+        ("#FFB366", "#FFB366"),
+        ("#FF8A5B", "#FF8A5B"),
+        ("#FBBF24", "#FBBF24"),
+    ]
+    return palette[min(index, len(palette) - 1)]
+
+
+def build_timeline(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    sorted_events = sorted(events, key=lambda item: _parse_timestamp(item.get("timestamp")))
+    if not sorted_events:
+        return []
+
+    unique_accounts = 0
+    seen_accounts: set[str] = set()
+    timeline: list[dict[str, Any]] = []
+
+    for index, event in enumerate(sorted_events):
+        user_id = str(event.get("user_id", "")).strip() or "unknown"
+        claim_text = str(event.get("claim_text", "")).strip() or "Propagation event recorded"
+        timestamp = event.get("timestamp")
+        if user_id not in seen_accounts:
+            seen_accounts.add(user_id)
+            unique_accounts += 1
+
+        dot_color, line_color = _timeline_colors(index)
+        timeline.append(
+            {
+                "title": user_id,
+                "detail": claim_text,
+                "time": timestamp,
+                "metric": f"{unique_accounts} node{'s' if unique_accounts != 1 else ''} tracked",
+                "dot_color": dot_color,
+                "line_color": line_color,
+            }
+        )
+
+    return timeline
+
+
 def analyze_propagation(events: list[dict[str, Any]]) -> dict[str, Any]:
     graph = generate_propagation_graph(events)
     patient_zero = estimate_patient_zero(events)
 
-    super_spreader: str | None = None
+    top_amplifier: str | None = None
     if graph.number_of_nodes() > 0:
-        super_spreader = max(graph.out_degree, key=lambda item: item[1])[0]
+        top_amplifier = max(graph.out_degree, key=lambda item: item[1])[0]
 
     clusters = cluster_narratives(events)
+    nodes = [
+        {
+            "id": str(node),
+            "label": str(node),
+            "event_count": sum(1 for event in events if str(event.get("user_id", "")).strip() == str(node)),
+            "is_patient_zero": str(node) == patient_zero,
+            "is_top_amplifier": str(node) == top_amplifier,
+        }
+        for node in graph.nodes()
+    ]
+    edges = [
+        {"source": src, "target": dst, "weight": attrs.get("weight", 1)}
+        for src, dst, attrs in graph.edges(data=True)
+    ]
+    timeline = build_timeline(events)
 
     return {
         "patient_zero": patient_zero,
+        "top_amplifier": top_amplifier,
+        "events_captured": len(events),
+        "nodes": nodes,
+        "edges": edges,
+        "timeline": timeline,
         "spread_nodes": graph.number_of_nodes(),
-        "super_spreader": super_spreader,
+        "super_spreader": top_amplifier,
         "clusters": [{"cluster_id": c["cluster_id"], "event_count": len(c["events"])} for c in clusters],
         "graph": {
             "nodes": list(graph.nodes()),
-            "edges": [
-                {"source": src, "target": dst, "weight": attrs.get("weight", 1)}
-                for src, dst, attrs in graph.edges(data=True)
-            ],
+            "edges": edges,
         },
     }
