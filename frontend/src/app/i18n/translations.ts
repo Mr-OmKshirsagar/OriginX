@@ -21,14 +21,14 @@ const en: TranslationMap = {
   navImageVerification: 'Image Verification',
   navSettings: 'Settings',
 
-  appTagline: 'Trace the Origin of Truth',
+  appTagline: "Know What's Truth, Before It Trends",
   darkMode: 'Dark Mode',
   lightMode: 'Light Mode',
   totalVerifications: 'Total Verifications',
   completedIn: 'Completed in {month}',
   completedThisMonth: 'Completed this month',
 
-  landingBadge: 'Trace the Origin of Truth',
+  landingBadge: "Know What's Truth, Before It Trends",
   landingHeroTitle: 'Verify News Before You Believe It',
   landingHeroSubtitle: 'OriginX analyzes global news sources, detects fake websites, and provides credibility scores for viral claims.',
   landingSearchPlaceholder: 'Enter a news claim to verify...',
