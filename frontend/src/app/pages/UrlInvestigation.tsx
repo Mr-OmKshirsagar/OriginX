@@ -486,23 +486,27 @@ export function UrlInvestigation() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-[0.95fr,1.05fr] gap-6">
-                <div className={`rounded-[28px] border p-6 relative overflow-hidden ${isDarkMode ? 'bg-[#111827] border-white/8' : 'bg-white border-[#E2E8F0] shadow-sm'}`}>
+              <div className="flex flex-col lg:flex-row gap-6 items-start">
+                {/* Left: Shield Card - 35-40% width */}
+                <div className={`w-full lg:w-[35%] rounded-[28px] border p-6 relative overflow-hidden flex-shrink-0 ${isDarkMode ? 'bg-[#111827] border-white/8' : 'bg-white border-[#E2E8F0] shadow-sm'}`}>
                   <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #FACC15, #FDE047)' }} />
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <p className={`text-[20px] uppercase tracking-[0.08em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('urlInvCredibilityScore')}</p>
-                      <h2 className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('urlInvShieldMeter')}</h2>
+                  <div className="flex flex-col gap-4 h-full">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className={`text-[20px] uppercase tracking-[0.08em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('urlInvCredibilityScore')}</p>
+                        <h2 className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('urlInvShieldMeter')}</h2>
+                      </div>
+                      <div className="rounded-full px-3 py-1 text-sm whitespace-nowrap" style={{ border: `1px solid ${UI_COLORS.secondary}33`, backgroundColor: `${UI_COLORS.secondary}12`, color: UI_COLORS.secondary }}>{t('urlInvAiCalibrated')}</div>
                     </div>
-                    <div className="rounded-full px-3 py-1 text-sm" style={{ border: `1px solid ${UI_COLORS.secondary}33`, backgroundColor: `${UI_COLORS.secondary}12`, color: UI_COLORS.secondary }}>{t('urlInvAiCalibrated')}</div>
-                  </div>
-                  <div className="flex items-center justify-center">
-                    <CredibilityGauge score={investigationScore} isDarkMode={isDarkMode} />
+                    <div className="flex items-center justify-center flex-1">
+                      <CredibilityGauge score={investigationScore} isDarkMode={isDarkMode} />
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                {/* Right: Cards Grid - 60-65% width */}
+                <div className="w-full lg:w-[65%]">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4">
                     {[
                       {
                         icon: ShieldCheck,
@@ -520,6 +524,23 @@ export function UrlInvestigation() {
                             </div>
                             <div className={`h-3 rounded-full overflow-hidden ${isDarkMode ? 'bg-[#1E293B]' : 'bg-[#E2E8F0]'}`}>
                               <div className="h-full rounded-full" style={{ width: `${investigationSummary.severityScore}%`, backgroundColor: investigationSummary.severityAccent }} />
+                            </div>
+                          </>
+                        )
+                      },
+                      {
+                        icon: MapPin,
+                        label: t('urlInvLocation'),
+                        category: investigationSummary.sectionCategories.location,
+                        accent: CATEGORY_THEME[investigationSummary.sectionCategories.location].accent,
+                        content: (
+                          <>
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className={`text-3xl font-semibold ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{investigationSummary.locationLabel}</p>
+                                <p className={`mt-3 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{investigationSummary.locationNote}</p>
+                              </div>
+                              <Globe className="w-8 h-8" style={{ color: CATEGORY_THEME[investigationSummary.sectionCategories.location].accent }} />
                             </div>
                           </>
                         )
@@ -552,23 +573,6 @@ export function UrlInvestigation() {
                             </div>
                             <p className={`mt-4 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{investigationSummary.sslNote}</p>
                             {domainRisk === 'high' && <p className="mt-3 text-lg" style={{ color: UI_COLORS.alert }}>{t('urlInvRiskScoreBoost')}</p>}
-                          </>
-                        )
-                      },
-                      {
-                        icon: MapPin,
-                        label: t('urlInvLocation'),
-                        category: investigationSummary.sectionCategories.location,
-                        accent: CATEGORY_THEME[investigationSummary.sectionCategories.location].accent,
-                        content: (
-                          <>
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className={`text-3xl font-semibold ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{investigationSummary.locationLabel}</p>
-                                <p className={`mt-3 ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{investigationSummary.locationNote}</p>
-                              </div>
-                              <Globe className="w-8 h-8" style={{ color: CATEGORY_THEME[investigationSummary.sectionCategories.location].accent }} />
-                            </div>
                           </>
                         )
                       },
@@ -606,10 +610,12 @@ export function UrlInvestigation() {
                       );
                     })}
                   </div>
+                </div>
+              </div>
 
-                  <motion.div
-                    whileHover={{ y: -3 }}
-                    className={`rounded-[28px] border p-6 transition-all cursor-pointer relative overflow-hidden ${isDarkMode ? 'bg-[#111827] border-white/8 hover:border-[#EF4444]/20 hover:shadow-[0_18px_40px_rgba(239,68,68,0.08)]' : 'bg-white border-[#E2E8F0] hover:border-[#FCA5A5] hover:shadow-md'}`}
+              <motion.div
+                whileHover={{ y: -3 }}
+                className={`rounded-[28px] border p-6 transition-all cursor-pointer relative overflow-hidden ${isDarkMode ? 'bg-[#111827] border-white/8 hover:border-[#EF4444]/20 hover:shadow-[0_18px_40px_rgba(239,68,68,0.08)]' : 'bg-white border-[#E2E8F0] hover:border-[#FCA5A5] hover:shadow-md'}`}
                   >
                     <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${CATEGORY_THEME[investigationSummary.sectionCategories.threats].accent}, ${UI_COLORS.primary})` }} />
                     <div className="flex items-center justify-between gap-4 mb-5">
@@ -680,8 +686,6 @@ export function UrlInvestigation() {
                       ))}
                     </div>
                   </motion.div>
-                </div>
-              </div>
             </div>
           )}
         </div>

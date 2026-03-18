@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Flame, Globe, ArrowUpRight, Clock3, RefreshCw, Timer } from 'lucide-react';
 import { Sidebar } from '../components/Sidebar';
 import { useDarkMode } from '../components/DarkModeContext';
 import { useLanguage } from '../components/LanguageContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { getTrendingNews, type TrendingNewsResponse } from '../services/api';
 
 interface TrendingNewsItem {
@@ -45,6 +46,8 @@ const TRENDING_COUNTRY_STORAGE_KEY = 'originx.trending.country';
 const TRENDING_CATEGORY_STORAGE_KEY = 'originx.trending.category';
 const GEOLOCATION_TIMEOUT_MS = 7000;
 const REVERSE_GEOCODE_TIMEOUT_MS = 5000;
+const HOVER_OPEN_DELAY_MS = 220;
+const HOVER_CLOSE_DELAY_MS = 420;
 
 function detectCountryFromLocale(): string {
   const locales = [navigator.language, ...(navigator.languages || [])].filter(Boolean);
@@ -145,6 +148,16 @@ export function TrendingNews() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [selectedCountry, setSelectedCountry] = useState('global');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [isCountryMenuOpen, setIsCountryMenuOpen] = useState(false);
+  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const countryOpenTimerRef = useRef<number | null>(null);
+  const categoryOpenTimerRef = useRef<number | null>(null);
+  const countryCloseTimerRef = useRef<number | null>(null);
+  const categoryCloseTimerRef = useRef<number | null>(null);
+  const isCountryTriggerHoveredRef = useRef(false);
+  const isCountryContentHoveredRef = useRef(false);
+  const isCategoryTriggerHoveredRef = useRef(false);
+  const isCategoryContentHoveredRef = useRef(false);
   const [detectedLocalCountry, setDetectedLocalCountry] = useState('us');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
@@ -318,6 +331,201 @@ export function TrendingNews() {
     return value;
   };
 
+  const canHoverOpen = () => (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer:fine)').matches);
+
+  const clearCountryCloseTimer = () => {
+    if (countryCloseTimerRef.current !== null) {
+      window.clearTimeout(countryCloseTimerRef.current);
+      countryCloseTimerRef.current = null;
+    }
+  };
+
+  const clearCategoryCloseTimer = () => {
+    if (categoryCloseTimerRef.current !== null) {
+      window.clearTimeout(categoryCloseTimerRef.current);
+      categoryCloseTimerRef.current = null;
+    }
+  };
+
+  const clearCountryOpenTimer = () => {
+    if (countryOpenTimerRef.current !== null) {
+      window.clearTimeout(countryOpenTimerRef.current);
+      countryOpenTimerRef.current = null;
+    }
+  };
+
+  const clearCategoryOpenTimer = () => {
+    if (categoryOpenTimerRef.current !== null) {
+      window.clearTimeout(categoryOpenTimerRef.current);
+      categoryOpenTimerRef.current = null;
+    }
+  };
+
+  const scheduleCountryOpen = () => {
+    if (!canHoverOpen()) return;
+    clearCountryOpenTimer();
+    countryOpenTimerRef.current = window.setTimeout(() => {
+      if (isCountryTriggerHoveredRef.current) {
+        setIsCountryMenuOpen(true);
+      }
+      countryOpenTimerRef.current = null;
+    }, HOVER_OPEN_DELAY_MS);
+  };
+
+  const scheduleCategoryOpen = () => {
+    if (!canHoverOpen()) return;
+    clearCategoryOpenTimer();
+    categoryOpenTimerRef.current = window.setTimeout(() => {
+      if (isCategoryTriggerHoveredRef.current) {
+        setIsCategoryMenuOpen(true);
+      }
+      categoryOpenTimerRef.current = null;
+    }, HOVER_OPEN_DELAY_MS);
+  };
+
+  const scheduleCountryClose = () => {
+    if (!canHoverOpen()) return;
+    clearCountryCloseTimer();
+    countryCloseTimerRef.current = window.setTimeout(() => {
+      if (!isCountryTriggerHoveredRef.current && !isCountryContentHoveredRef.current) {
+        setIsCountryMenuOpen(false);
+      }
+      countryCloseTimerRef.current = null;
+    }, HOVER_CLOSE_DELAY_MS);
+  };
+
+  const scheduleCategoryClose = () => {
+    if (!canHoverOpen()) return;
+    clearCategoryCloseTimer();
+    categoryCloseTimerRef.current = window.setTimeout(() => {
+      if (!isCategoryTriggerHoveredRef.current && !isCategoryContentHoveredRef.current) {
+        setIsCategoryMenuOpen(false);
+      }
+      categoryCloseTimerRef.current = null;
+    }, HOVER_CLOSE_DELAY_MS);
+  };
+
+  const openCountryOnHover = () => {
+    if (!canHoverOpen()) return;
+    clearCountryOpenTimer();
+    clearCountryCloseTimer();
+    scheduleCountryOpen();
+  };
+
+  const openCategoryOnHover = () => {
+    if (!canHoverOpen()) return;
+    clearCategoryOpenTimer();
+    clearCategoryCloseTimer();
+    scheduleCategoryOpen();
+  };
+
+  const isElementInCountrySelect = (target: EventTarget | null) => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest('#trending-country') || target.closest('[data-originx-select="country-content"]'));
+  };
+
+  const isElementInCategorySelect = (target: EventTarget | null) => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest('#trending-category') || target.closest('[data-originx-select="category-content"]'));
+  };
+
+  const handleCountryTriggerEnter = () => {
+    if (!canHoverOpen()) return;
+    isCountryTriggerHoveredRef.current = true;
+    openCountryOnHover();
+  };
+
+  const handleCountryTriggerMove = () => {
+    if (!canHoverOpen()) return;
+    isCountryTriggerHoveredRef.current = true;
+    clearCountryCloseTimer();
+  };
+
+  const handleCountryTriggerLeave = (event: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>) => {
+    isCountryTriggerHoveredRef.current = false;
+    clearCountryOpenTimer();
+    if (isElementInCountrySelect(event.relatedTarget)) {
+      return;
+    }
+    scheduleCountryClose();
+  };
+
+  const handleCountryContentEnter = () => {
+    if (!canHoverOpen()) return;
+    isCountryContentHoveredRef.current = true;
+    clearCountryCloseTimer();
+    setIsCountryMenuOpen(true);
+  };
+
+  const handleCountryContentMove = () => {
+    if (!canHoverOpen()) return;
+    isCountryContentHoveredRef.current = true;
+    clearCountryCloseTimer();
+  };
+
+  const handleCountryContentLeave = (event: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>) => {
+    isCountryContentHoveredRef.current = false;
+    if (isElementInCountrySelect(event.relatedTarget)) {
+      return;
+    }
+    scheduleCountryClose();
+  };
+
+  const handleCategoryTriggerEnter = () => {
+    if (!canHoverOpen()) return;
+    isCategoryTriggerHoveredRef.current = true;
+    openCategoryOnHover();
+  };
+
+  const handleCategoryTriggerMove = () => {
+    if (!canHoverOpen()) return;
+    isCategoryTriggerHoveredRef.current = true;
+    clearCategoryCloseTimer();
+  };
+
+  const handleCategoryTriggerLeave = (event: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>) => {
+    isCategoryTriggerHoveredRef.current = false;
+    clearCategoryOpenTimer();
+    if (isElementInCategorySelect(event.relatedTarget)) {
+      return;
+    }
+    scheduleCategoryClose();
+  };
+
+  const handleCategoryContentEnter = () => {
+    if (!canHoverOpen()) return;
+    isCategoryContentHoveredRef.current = true;
+    clearCategoryCloseTimer();
+    setIsCategoryMenuOpen(true);
+  };
+
+  const handleCategoryContentMove = () => {
+    if (!canHoverOpen()) return;
+    isCategoryContentHoveredRef.current = true;
+    clearCategoryCloseTimer();
+  };
+
+  const handleCategoryContentLeave = (event: React.MouseEvent<HTMLElement> | React.PointerEvent<HTMLElement>) => {
+    isCategoryContentHoveredRef.current = false;
+    if (isElementInCategorySelect(event.relatedTarget)) {
+      return;
+    }
+    scheduleCategoryClose();
+  };
+
+  useEffect(() => {
+    return () => {
+      clearCountryOpenTimer();
+      clearCategoryOpenTimer();
+      clearCountryCloseTimer();
+      clearCategoryCloseTimer();
+      isCountryTriggerHoveredRef.current = false;
+      isCountryContentHoveredRef.current = false;
+      isCategoryTriggerHoveredRef.current = false;
+      isCategoryContentHoveredRef.current = false;
+    };
+  }, []);
+
   return (
     <div className={`min-h-screen transition-all duration-300 ${isDarkMode ? 'bg-[#0B1120]' : 'bg-[#F1F5F9]'}`}>
       <Sidebar />
@@ -362,41 +570,67 @@ export function TrendingNews() {
                 <label htmlFor="trending-country" className={`block text-xs uppercase tracking-widest mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
                   {t('trendingCountryScope')}
                 </label>
-                <select
-                  id="trending-country"
-                  title={t('trendingSelectCountryTitle')}
-                  value={selectedCountry}
-                  onChange={(event) => setSelectedCountry(event.target.value)}
-                  className={`w-full rounded-xl border px-4 py-2.5 outline-none transition-all text-sm ${
-                    isDarkMode
-                      ? 'bg-[#0B1120] border-white/10 text-white focus:border-[#3B82F6]'
-                      : 'bg-[#F8FAFC] border-[#CBD5E1] text-[#0F172A] focus:border-[#3B82F6]'
-                  }`}
-                >
-                  {COUNTRY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
-                  ))}
-                </select>
+                <Select open={isCountryMenuOpen} onOpenChange={setIsCountryMenuOpen} value={selectedCountry} onValueChange={setSelectedCountry}>
+                  <SelectTrigger
+                    id="trending-country"
+                    title={t('trendingSelectCountryTitle')}
+                    onPointerEnter={handleCountryTriggerEnter}
+                    onPointerMove={handleCountryTriggerMove}
+                    onPointerLeave={handleCountryTriggerLeave}
+                    className={`w-full rounded-xl px-4 py-2.5 text-sm ${
+                      isDarkMode
+                        ? 'bg-[#0B1120] border-white/10 text-white hover:border-[#3B82F6]/50 focus-visible:border-[#3B82F6]'
+                        : 'bg-[#F8FAFC] border-[#CBD5E1] text-[#0F172A] hover:border-[#60A5FA] focus-visible:border-[#3B82F6]'
+                    }`}
+                    aria-label={t('trendingSelectCountryTitle')}
+                  >
+                    <SelectValue placeholder={t('trendingSelectCountryTitle')} />
+                  </SelectTrigger>
+                  <SelectContent
+                    data-originx-select="country-content"
+                    onPointerEnter={handleCountryContentEnter}
+                    onPointerMove={handleCountryContentMove}
+                    onPointerLeave={handleCountryContentLeave}
+                    className={isDarkMode ? 'bg-[#0B1120] border-white/10 text-white' : 'bg-white border-[#E2E8F0] text-[#0F172A]'}
+                  >
+                    {COUNTRY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex-1">
                 <label htmlFor="trending-category" className={`block text-xs uppercase tracking-widest mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
                   {t('trendingCategory')}
                 </label>
-                <select
-                  id="trending-category"
-                  title={t('trendingSelectCategoryTitle')}
-                  value={selectedCategory}
-                  onChange={(event) => setSelectedCategory(event.target.value)}
-                  className={`w-full rounded-xl border px-4 py-2.5 outline-none transition-all text-sm ${
-                    isDarkMode
-                      ? 'bg-[#0B1120] border-white/10 text-white focus:border-[#3B82F6]'
-                      : 'bg-[#F8FAFC] border-[#CBD5E1] text-[#0F172A] focus:border-[#3B82F6]'
-                  }`}
-                >
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
-                  ))}
-                </select>
+                <Select open={isCategoryMenuOpen} onOpenChange={setIsCategoryMenuOpen} value={selectedCategory} onValueChange={setSelectedCategory}>
+                  <SelectTrigger
+                    id="trending-category"
+                    title={t('trendingSelectCategoryTitle')}
+                    onPointerEnter={handleCategoryTriggerEnter}
+                    onPointerMove={handleCategoryTriggerMove}
+                    onPointerLeave={handleCategoryTriggerLeave}
+                    className={`w-full rounded-xl px-4 py-2.5 text-sm ${
+                      isDarkMode
+                        ? 'bg-[#0B1120] border-white/10 text-white hover:border-[#3B82F6]/50 focus-visible:border-[#3B82F6]'
+                        : 'bg-[#F8FAFC] border-[#CBD5E1] text-[#0F172A] hover:border-[#60A5FA] focus-visible:border-[#3B82F6]'
+                    }`}
+                    aria-label={t('trendingSelectCategoryTitle')}
+                  >
+                    <SelectValue placeholder={t('trendingSelectCategoryTitle')} />
+                  </SelectTrigger>
+                  <SelectContent
+                    data-originx-select="category-content"
+                    onPointerEnter={handleCategoryContentEnter}
+                    onPointerMove={handleCategoryContentMove}
+                    onPointerLeave={handleCategoryContentLeave}
+                    className={isDarkMode ? 'bg-[#0B1120] border-white/10 text-white' : 'bg-white border-[#E2E8F0] text-[#0F172A]'}
+                  >
+                    {CATEGORY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <button
                 onClick={() => { void fetchLatestNews(); }}
