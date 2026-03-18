@@ -3,6 +3,10 @@ export interface VerificationSource {
   title?: string;
   description?: string;
   url?: string;
+  published_at?: string;
+  publishedAt?: string;
+  published?: string;
+  date?: string;
   similarity_score?: number;
   semantic_relevance_score?: number;
   stance_label?: "supports" | "contradicts" | "related" | "unrelated";

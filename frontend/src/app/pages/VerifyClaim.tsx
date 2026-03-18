@@ -248,7 +248,7 @@ function SpreadTimelinePanel({ eyebrow, heading, events, isDarkMode }: SpreadTim
               <div className={isLast ? '' : 'pb-6'}>
                 <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{event.title}</p>
                 <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{event.detail}</p>
-                <p className={`text-xs mt-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{event.time}{event.metric ? ` � ${event.metric}` : ''}</p>
+                <p className={`text-xs mt-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{event.time}{event.metric ? ` � ${event.metric}` : ''}</p>
               </div>
             </motion.div>
           );
@@ -343,17 +343,18 @@ export function VerifyClaim() {
   const [isLoadingFacebook, setIsLoadingFacebook] = useState(false);
   const [isLoadingInstagram, setIsLoadingInstagram] = useState(false);
   const [isLoadingNews, setIsLoadingNews] = useState(false);
+  const [showAllTrustedSources, setShowAllTrustedSources] = useState(false);
+  const [showAllSuspiciousSources, setShowAllSuspiciousSources] = useState(false);
   const [ttsStatus, setTtsStatus] = useState<'idle' | 'loading' | 'playing' | 'paused'>('idle');
   const resultsRef = useRef<HTMLDivElement>(null);
   const ttsUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const isSpeechSynthesisSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
 
-  const formatTimelineDate = (isoDate: string): string => {
-    const parsed = new Date(isoDate);
-    if (Number.isNaN(parsed.getTime())) return isoDate;
-    return parsed.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
-  };
+  useEffect(() => {
+    setShowAllTrustedSources(false);
+    setShowAllSuspiciousSources(false);
+  }, [verificationData]);
 
   const formatTimelineTimestamp = (value?: string | null): string => {
     if (!value) return 'Time unavailable';
@@ -417,14 +418,23 @@ export function VerifyClaim() {
               ? source.similarity_score
               : 45;
         const similarity = similarityRaw > 1 ? similarityRaw / 100 : similarityRaw;
+        const sourcePublishedDate = source.published_at || source.publishedAt || source.published || source.date;
+        let formattedPublishedDate = t('verifyLiveNow');
+
+        if (sourcePublishedDate) {
+          const parsedPublishedDate = new Date(sourcePublishedDate);
+          formattedPublishedDate = Number.isNaN(parsedPublishedDate.getTime())
+            ? sourcePublishedDate
+            : parsedPublishedDate.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' });
+        } else if (analyzedAt) {
+          formattedPublishedDate = analyzedAt.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' });
+        }
 
         return {
           id: index + 1,
           title: source.title || source.description || t('verifyEvidenceItem', { index: index + 1 }),
           source: source.source || t('verifyUnknownSource'),
-          date: analyzedAt
-            ? analyzedAt.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' })
-            : t('verifyLiveNow'),
+          date: formattedPublishedDate,
           similarity: Math.max(0, Math.min(similarity, 1)),
           url: source.url || '#',
           logo: '📰'
@@ -432,12 +442,11 @@ export function VerifyClaim() {
       })
     : [];
 
-  const timeline: TimelineEvent[] = [
-    { date: formatTimelineDate('2026-01-04'), event: t('verifyTimelineEventInitialMention'), source: t('verifyTimelineSourceSocialMedia') },
-    { date: formatTimelineDate('2026-01-05'), event: t('verifyTimelineEventFirstTrusted'), source: t('verifyTimelineSourceReuters') },
-    { date: formatTimelineDate('2026-01-06'), event: t('verifyTimelineEventSecondaryConfirmation'), source: t('verifyTimelineSourceBBC') },
-    { date: formatTimelineDate('2026-01-07'), event: t('verifyTimelineEventAmplificationWave'), source: t('verifyTimelineSourceBlogs') }
-  ];
+  const timeline: TimelineEvent[] = articles.slice(0, 4).map((article) => ({
+    date: article.date,
+    source: article.source,
+    event: article.title,
+  }));
 
   const averageSimilarity = articles.length
     ? Math.round((articles.reduce((total, article) => total + article.similarity, 0) / articles.length) * 100)
@@ -515,6 +524,8 @@ export function VerifyClaim() {
 
   const trustedSources = articles.filter((article) => article.similarity >= 0.7);
   const suspiciousSources = articles.filter((article) => article.similarity < 0.7);
+  const visibleTrustedSources = showAllTrustedSources ? trustedSources : trustedSources.slice(0, 3);
+  const visibleSuspiciousSources = showAllSuspiciousSources ? suspiciousSources : suspiciousSources.slice(0, 3);
   const hasThreatSignal = suspiciousSources.length > 0 || credibilityScore < 50;
   const threatPanelTheme = hasThreatSignal
     ? {
@@ -1382,30 +1393,37 @@ export function VerifyClaim() {
                 <div className="absolute -right-20 top-0 h-64 w-64 rounded-full bg-[#22D3EE]/10 blur-3xl" />
                 <div className="absolute left-0 top-0 h-px w-full bg-[linear-gradient(90deg,transparent,#FACC15,transparent)] opacity-70" />
 
-                <div className="relative space-y-8">
-                  <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="max-w-2xl">
-                      <div className="inline-flex items-center gap-2 rounded-full border border-[#22D3EE]/25 bg-[#22D3EE]/10 px-4 py-1.5 mb-4">
-                        <Sparkles className="w-4 h-4 text-[#22D3EE]" />
-                        <span className="text-sm text-[#22D3EE]">{t('verifyAiDashboardLabel')}</span>
+                <div className="relative space-y-4">
+                  {/* Top Strip */}
+                  <div className="grid grid-cols-1 xl:grid-cols-[1.15fr,0.85fr] gap-4 items-start">
+                    <div className={`rounded-2xl border px-4 py-3 ${
+                      isDarkMode ? 'border-white/8 bg-white/[0.04]' : 'border-[#E2E8F0] bg-white'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="inline-flex items-center gap-1.5 rounded-full border border-[#22D3EE]/25 bg-[#22D3EE]/10 px-2.5 py-1">
+                          <Sparkles className="w-3.5 h-3.5 text-[#22D3EE]" />
+                          <span className="text-[11px] text-[#22D3EE]">{t('verifyAiDashboardLabel')}</span>
+                        </div>
                       </div>
-                      <h2 className={`text-2xl mb-3 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyResultTitle')}</h2>
-                      <p className={isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}>
-                        {t('verifyResultSubtitle')}
-                      </p>
+                      <div className="flex flex-col gap-1">
+                        <h2 className={`text-xl leading-tight ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyResultTitle')}</h2>
+                        <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>
+                          {t('verifyResultSubtitle')}
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-2 xl:justify-end">
                       {trustIndicators.map((indicator) => {
                         const Icon = indicator.icon;
 
                         return (
                           <div
                             key={indicator.label}
-                            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 backdrop-blur-md"
-                            style={{ boxShadow: `0 0 18px ${indicator.accent}14` }}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs backdrop-blur-md transition-all duration-200 hover:translate-y-[-1px] hover:bg-white/[0.08]"
+                            style={{ boxShadow: `0 0 10px ${indicator.accent}10` }}
                           >
-                            <Icon className="w-4 h-4" style={{ color: indicator.accent }} />
+                            <Icon className="w-3.5 h-3.5" style={{ color: indicator.accent }} />
                             <span className={isDarkMode ? 'text-[#E2E8F0]' : 'text-[#0F172A]'}>{indicator.label}</span>
                           </div>
                         );
@@ -1413,85 +1431,94 @@ export function VerifyClaim() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 xl:grid-cols-[1.08fr,0.92fr] gap-6">
-                    <div className="space-y-6">
-                      <div className={`rounded-2xl border p-6 ${
-                        isDarkMode
-                          ? 'bg-white/5 border-white/8 backdrop-blur-xl shadow-[0_18px_40px_rgba(2,6,23,0.26)]'
-                          : 'bg-[#F8FAFC] border-[#E2E8F0]'
-                      }`}>
-                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                          <div>
-                            <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyAnalyzedClaim')}</p>
-                            <p className={`text-lg leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{claim}</p>
-                          </div>
-                          <div className={`min-w-[220px] rounded-2xl border p-4 ${
-                            isDarkMode
-                              ? 'border-white/10 bg-[#0B1120]/70 backdrop-blur-xl'
-                              : 'border-[#CBD5E1] bg-white shadow-sm'
-                          }`}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="relative flex h-2.5 w-2.5">
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22C55E] opacity-60"></span>
-                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#22C55E]"></span>
-                              </span>
-                              <p className={`text-sm ${isDarkMode ? 'text-[#22C55E]' : 'text-[#16A34A]'}`}>{verificationVerdict.status}</p>
-                            </div>
-                            <div className={`flex items-center gap-2 text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
-                              <CalendarClock className={`w-4 h-4 ${isDarkMode ? 'text-[#22D3EE]' : 'text-[#0891B2]'}`} />
-                              <span>{analyzedTimestamp}</span>
-                            </div>
-                            <div className="mt-3 inline-flex items-center rounded-full border px-3 py-1 text-xs"
-                              style={{ borderColor: `${verificationVerdict.accent}44`, color: verificationVerdict.accent, backgroundColor: `${verificationVerdict.accent}18` }}>
-                              {verificationVerdict.badge}
-                            </div>
-                          </div>
-                        </div>
+                  {/* Claim + Backend Status */}
+                  <div className={`rounded-2xl border p-4 ${
+                    isDarkMode
+                      ? 'bg-white/[0.03] border-white/8 backdrop-blur-sm'
+                      : 'bg-[#F8FAFC] border-[#E2E8F0]'
+                  }`}>
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className={`text-[11px] uppercase tracking-[0.16em] mb-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyAnalyzedClaim')}</p>
+                        <p className={`text-base leading-snug truncate lg:whitespace-normal ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{claim}</p>
                       </div>
 
-                      <div className={`rounded-2xl border p-6 ${
-                        isDarkMode
-                          ? 'bg-[linear-gradient(180deg,rgba(8,15,31,0.94),rgba(17,24,39,0.9))] border-white/8 backdrop-blur-xl'
-                          : 'bg-[#F8FAFC] border-[#E2E8F0]'
+                      <div className={`rounded-xl border px-3 py-2 ${
+                        isDarkMode ? 'border-white/10 bg-[#0B1120]/60' : 'border-[#CBD5E1] bg-white'
                       }`}>
-                        <div className="flex items-center justify-between mb-5">
+                        <div className="flex items-center gap-3">
                           <div>
-                            <p className={`text-xs uppercase tracking-[0.18em] mb-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyCredibilityVisualization')}</p>
-                            <h2 className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{t('verifyCredibilityMeterTitle')}</h2>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="relative flex h-2 w-2">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22C55E] opacity-60"></span>
+                                <span className="relative inline-flex h-2 w-2 rounded-full bg-[#22C55E]"></span>
+                              </span>
+                              <p className={`text-xs ${isDarkMode ? 'text-[#22C55E]' : 'text-[#16A34A]'}`}>{verificationVerdict.status}</p>
+                            </div>
+                            <div className={`flex items-center gap-1 text-xs ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>
+                              <CalendarClock className="w-3 h-3" />
+                              <span>{analyzedTimestamp}</span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex flex-col items-center justify-center gap-4 xl:flex-row xl:items-center xl:justify-between">
-                          <CredibilityGauge score={credibilityScore} isDarkMode={isDarkMode} />
-                          <div className="w-full max-w-xs space-y-3">
-                            <div className="rounded-2xl border border-white/8 bg-white/5 p-4 backdrop-blur-md">
-                              <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyVerdictLabel')}</p>
-                              <p className="text-2xl" style={{ color: verificationVerdict.accent }}>{verificationVerdict.label}</p>
-                            </div>
-                            <div className="rounded-2xl border border-white/8 bg-white/5 p-4 backdrop-blur-md">
-                              <p className={`text-xs uppercase tracking-[0.16em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyPrimarySignal')}</p>
-                              <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{summaryParts[0] || t('verifyPrimarySignalFallback')}</p>
-                            </div>
+                          <div
+                            className="inline-flex items-center rounded-full border px-2 py-1 text-[11px]"
+                            style={{ borderColor: `${verificationVerdict.accent}44`, color: verificationVerdict.accent, backgroundColor: `${verificationVerdict.accent}14` }}
+                          >
+                            {verificationVerdict.badge}
                           </div>
                         </div>
                       </div>
                     </div>
+                  </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {metricCards.map((metric) => (
-                        <MetricCard
-                          key={metric.label}
-                          icon={metric.icon}
-                          label={metric.label}
-                          value={metric.value}
-                          note={metric.note}
-                          accent={metric.accent}
-                          glow={metric.glow}
-                          isDarkMode={isDarkMode}
-                          decimals={metric.decimals}
-                          prefix={metric.prefix}
-                          suffix={metric.suffix}
-                        />
-                      ))}
+                  {/* Shield + Insights Board */}
+                  <div className={`rounded-2xl border p-5 ${
+                    isDarkMode
+                      ? 'bg-[linear-gradient(180deg,rgba(8,15,31,0.90),rgba(17,24,39,0.86))] border-white/8 backdrop-blur-xl'
+                      : 'bg-[#F8FAFC] border-[#E2E8F0]'
+                  }`}>
+                    <div className="flex flex-col lg:flex-row gap-5 items-start">
+                      <div className="w-full lg:w-[36%] lg:pr-4 lg:border-r lg:border-white/10">
+                        <div className="mb-4">
+                          <p className={`text-[11px] uppercase tracking-[0.16em] mb-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyCredibilityVisualization')}</p>
+                          <h2 className={`text-base ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{t('verifyCredibilityMeterTitle')}</h2>
+                        </div>
+                        <div className="flex items-center justify-center">
+                          <CredibilityGauge score={credibilityScore} isDarkMode={isDarkMode} />
+                        </div>
+                      </div>
+
+                      <div className="w-full lg:w-[64%] space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-[0.42fr,0.58fr] gap-3">
+                          <div className="rounded-xl border border-white/8 bg-white/[0.05] p-3 backdrop-blur-md transition-colors duration-200 hover:bg-white/[0.08]">
+                            <p className={`text-[11px] uppercase tracking-[0.15em] mb-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyVerdictLabel')}</p>
+                            <p className="text-lg leading-tight" style={{ color: verificationVerdict.accent }}>{verificationVerdict.label}</p>
+                          </div>
+
+                          <div className="rounded-xl border border-white/8 bg-white/[0.05] p-3 backdrop-blur-md transition-colors duration-200 hover:bg-white/[0.08]">
+                            <p className={`text-[11px] uppercase tracking-[0.15em] mb-1 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyPrimarySignal')}</p>
+                            <p className={`text-sm leading-snug ${isDarkMode ? 'text-[#CBD5E1]' : 'text-[#475569]'}`}>{summaryParts[0] || t('verifyPrimarySignalFallback')}</p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {metricCards.map((metric) => (
+                            <MetricCard
+                              key={metric.label}
+                              icon={metric.icon}
+                              label={metric.label}
+                              value={metric.value}
+                              note={metric.note}
+                              accent={metric.accent}
+                              glow={metric.glow}
+                              isDarkMode={isDarkMode}
+                              decimals={metric.decimals}
+                              prefix={metric.prefix}
+                              suffix={metric.suffix}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1641,7 +1668,7 @@ export function VerifyClaim() {
                         <div className="flex flex-col items-center justify-center py-10 text-center">
                           <p className={`text-sm ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyNoTrustedSources')}</p>
                         </div>
-                      ) : trustedSources.map((article, index) => (
+                      ) : visibleTrustedSources.map((article, index) => (
                         <motion.div
                           key={article.id}
                           initial={{ opacity: 0, x: -16 }}
@@ -1672,6 +1699,21 @@ export function VerifyClaim() {
                         </motion.div>
                       ))}
                     </div>
+                    {trustedSources.length > 3 && (
+                      <div className="mt-4 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => setShowAllTrustedSources((previous) => !previous)}
+                          className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                            isDarkMode
+                              ? 'border-[#22C55E]/35 bg-[#22C55E]/10 text-[#86EFAC] hover:bg-[#22C55E]/16'
+                              : 'border-[#22C55E]/30 bg-[#DCFCE7] text-[#15803D] hover:bg-[#BBF7D0]'
+                          }`}
+                        >
+                          {showAllTrustedSources ? 'Show less' : `View all (${trustedSources.length})`}
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className={`rounded-2xl border p-6 ${isDarkMode ? 'bg-[#0B1120]/80 border-[#EF4444]/20' : 'bg-[#F8FAFC] border-[#FECACA]'}`}>
@@ -1687,7 +1729,7 @@ export function VerifyClaim() {
                         <div className="flex flex-col items-center justify-center py-10 text-center">
                           <p className={`text-sm ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyNoSuspiciousSources')}</p>
                         </div>
-                      ) : suspiciousSources.map((article, index) => (
+                      ) : visibleSuspiciousSources.map((article, index) => (
                         <motion.div
                           key={article.id}
                           initial={{ opacity: 0, x: 16 }}
@@ -1724,6 +1766,21 @@ export function VerifyClaim() {
                         </motion.div>
                       ))}
                     </div>
+                    {suspiciousSources.length > 3 && (
+                      <div className="mt-4 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => setShowAllSuspiciousSources((previous) => !previous)}
+                          className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                            isDarkMode
+                              ? 'border-[#EF4444]/35 bg-[#EF4444]/10 text-[#FCA5A5] hover:bg-[#EF4444]/16'
+                              : 'border-[#EF4444]/30 bg-[#FEE2E2] text-[#B91C1C] hover:bg-[#FECACA]'
+                          }`}
+                        >
+                          {showAllSuspiciousSources ? 'Show less' : `View all (${suspiciousSources.length})`}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1869,170 +1926,37 @@ export function VerifyClaim() {
                 </div>
 
                 <div className="relative">
-                  <div className="absolute left-8 right-8 top-9 hidden h-px bg-gradient-to-r from-[#3B82F6] via-[#22D3EE] to-[#22C55E] lg:block"></div>
-                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-                    {timeline.map((event, index) => (
-                      <motion.div
-                        key={index}
-                        initial={{ opacity: 0, y: 18 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        className={`relative rounded-2xl border p-5 ${isDarkMode ? 'bg-[#0F172A] border-white/8' : 'bg-[#F8FAFC] border-[#E2E8F0]'}`}
-                      >
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="relative z-10 flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#3B82F6] to-[#22D3EE] text-white shadow-lg shadow-[#22D3EE]/20">
-                            {index + 1}
-                          </div>
-                          <div>
-                            <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{event.source}</p>
-                            <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{event.date}</p>
-                          </div>
-                        </div>
-                        <p className={`leading-relaxed ${isDarkMode ? 'text-[#CBD5E1]' : 'text-[#475569]'}`}>{event.event}</p>
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Fake Website Detection */}
-              <div className={`relative overflow-hidden rounded-[28px] border ${
-                isDarkMode
-                  ? 'bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(30,41,59,0.94))] border-white/8 shadow-[0_24px_60px_rgba(2,6,23,0.35)]'
-                  : 'bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.96))] border-[#E2E8F0] shadow-sm'
-              }`}>
-                <div className="absolute inset-x-0 top-0 h-1.5" style={{ background: threatPanelTheme.topBar }} />
-                <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full blur-3xl pointer-events-none" style={{ backgroundColor: threatPanelTheme.orbTop }} />
-                <div className="absolute -left-20 bottom-0 h-40 w-64 rounded-full blur-3xl pointer-events-none" style={{ background: threatPanelTheme.orbBottom }} />
-
-                <div className="relative p-8 sm:p-10">
-                  <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="flex items-start gap-5 flex-1">
-                      <div
-                        className="flex h-14 w-14 items-center justify-center rounded-2xl ring-1 flex-shrink-0"
-                        style={{ background: threatPanelTheme.iconSurface, color: threatPanelTheme.iconColor, borderColor: threatPanelTheme.badgeBorder }}
-                      >
-                        <ThreatPanelIcon className="h-6 w-6" />
-                      </div>
-                      <div className="flex-1">
-                        <p className={`text-xs font-semibold uppercase tracking-widest ${isDarkMode ? threatPanelTheme.eyebrowDark : threatPanelTheme.eyebrowLight}`}>
-                          {hasThreatSignal ? '⚠ ' : '✓ '}{t('verifyThreatIntelligence')}
-                        </p>
-                        <h3 className={`mt-2 text-2xl font-bold leading-tight ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
-                          {threatPanelTheme.headline}
-                        </h3>
-                        <p className={`mt-3 max-w-2xl text-sm leading-relaxed ${isDarkMode ? 'text-[#A1A5B0]' : 'text-[#6B7280]'}`}>
-                          {threatPanelTheme.description}
-                        </p>
-                      </div>
+                  {timeline.length === 0 ? (
+                    <div className={`rounded-2xl border p-6 text-center ${isDarkMode ? 'bg-[#0F172A] border-white/8 text-[#94A3B8]' : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#64748B]'}`}>
+                      {t('verifyNoArticlesToCompare')}
                     </div>
-
-                    <div
-                      className="inline-flex items-center gap-2.5 self-start rounded-full border px-4 py-2 text-xs font-semibold backdrop-blur-sm"
-                      style={{ borderColor: threatPanelTheme.badgeBorder, background: threatPanelTheme.badgeSurface, color: threatPanelTheme.badgeText }}
-                    >
-                      <span className="h-2.5 w-2.5 rounded-full animate-pulse" style={{ backgroundColor: threatPanelTheme.badgeText }} />
-                      {threatPanelTheme.badge}
-                    </div>
-                  </div>
-
-                  <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_0.9fr_0.85fr]">
-                    <div className={`group rounded-2xl border p-5 cursor-pointer transition-all duration-300 hover:-translate-y-1 ${
-                      isDarkMode
-                        ? threatPanelTheme.metricCardDark
-                        : threatPanelTheme.metricCardLight
-                    }`}>
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl transition-all" style={{ background: threatPanelTheme.metricIconSurface, color: threatPanelTheme.metricAccent }}>
-                          <GlobeIcon className="h-5 w-5" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className={`text-xs font-semibold uppercase tracking-wider ${isDarkMode ? threatPanelTheme.metricMutedDark : threatPanelTheme.metricMutedLight}`}>
-                            {t('verifyDomain')}
-                          </p>
-                          <p className="mt-2.5 truncate font-mono text-lg font-bold" style={{ color: threatPanelTheme.metricAccent }}>{threatPanelTheme.domainText}</p>
-                        </div>
+                  ) : (
+                    <>
+                      <div className="absolute left-8 right-8 top-9 hidden h-px bg-gradient-to-r from-[#3B82F6] via-[#22D3EE] to-[#22C55E] lg:block"></div>
+                      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                        {timeline.map((event, index) => (
+                          <motion.div
+                            key={`${event.source}-${index}`}
+                            initial={{ opacity: 0, y: 18 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                            className={`relative rounded-2xl border p-5 ${isDarkMode ? 'bg-[#0F172A] border-white/8' : 'bg-[#F8FAFC] border-[#E2E8F0]'}`}
+                          >
+                            <div className="flex items-center gap-3 mb-4">
+                              <div className="relative z-10 flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#3B82F6] to-[#22D3EE] text-white shadow-lg shadow-[#22D3EE]/20">
+                                {index + 1}
+                              </div>
+                              <div>
+                                <p className={isDarkMode ? 'text-white' : 'text-[#0F172A]'}>{event.source}</p>
+                                <p className={`text-sm ${isDarkMode ? 'text-[#94A3B8]' : 'text-[#64748B]'}`}>{event.date}</p>
+                              </div>
+                            </div>
+                            <p className={`leading-relaxed ${isDarkMode ? 'text-[#CBD5E1]' : 'text-[#475569]'}`}>{event.event}</p>
+                          </motion.div>
+                        ))}
                       </div>
-                    </div>
-
-                    <div className={`group rounded-2xl border p-5 cursor-pointer transition-all duration-300 hover:-translate-y-1 ${
-                      isDarkMode
-                        ? threatPanelTheme.metricCardDark
-                        : threatPanelTheme.metricCardLight
-                    }`}>
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl transition-all" style={{ background: threatPanelTheme.metricIconSurface, color: threatPanelTheme.metricAccent }}>
-                          <Shield className="h-5 w-5" />
-                        </div>
-                        <div className="flex-1">
-                          <p className={`text-xs font-semibold uppercase tracking-wider ${isDarkMode ? threatPanelTheme.metricMutedDark : threatPanelTheme.metricMutedLight}`}>
-                            {t('verifyStatus')}
-                          </p>
-                          <div className="mt-2.5 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-bold border" style={{ background: threatPanelTheme.badgeSurface, color: threatPanelTheme.metricAccent, borderColor: threatPanelTheme.badgeBorder }}>
-                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: threatPanelTheme.metricAccent }} />
-                            {threatPanelTheme.statusText}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className={`group rounded-2xl border p-5 cursor-pointer transition-all duration-300 hover:-translate-y-1 ${
-                      isDarkMode
-                        ? threatPanelTheme.metricCardDark
-                        : threatPanelTheme.metricCardLight
-                    }`}>
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl transition-all" style={{ background: threatPanelTheme.metricIconSurface, color: threatPanelTheme.metricAccent }}>
-                          <FileBarChart2 className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <p className={`text-xs font-semibold uppercase tracking-wider ${isDarkMode ? threatPanelTheme.metricMutedDark : threatPanelTheme.metricMutedLight}`}>
-                            {t('verifyRiskScore')}
-                          </p>
-                          <p className={`mt-2.5 text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
-                            <span style={{ color: threatPanelTheme.metricAccent }}>{threatPanelTheme.score}</span>
-                            <span className={isDarkMode ? 'text-[#4B5563]' : 'text-[#9CA3AF]'}>/10</span>
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => navigate('/url-investigation', {
-                      state: {
-                        initialUrl: 'https://fakepoliticsnews.com',
-                        source: 'verify-claim',
-                      },
-                    })}
-                    className={`mt-8 flex w-full items-center justify-between rounded-2xl border px-6 py-5 text-left transition-all duration-300 hover:-translate-y-1 font-semibold ${
-                      isDarkMode
-                        ? threatPanelTheme.buttonDark
-                        : threatPanelTheme.buttonLight
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-lg" style={{ background: threatPanelTheme.buttonIcon, boxShadow: `0 12px 24px ${threatPanelTheme.badgeBorder}` }}>
-                        <ScanSearch className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className={`text-base font-bold ${isDarkMode ? 'text-white' : threatPanelTheme.buttonTitleLight}`}>
-                          {t('verifyRunDeepUrlInvestigation')}
-                        </p>
-                        <p className={`text-xs mt-0.5 ${isDarkMode ? 'text-[#9CA3AF]' : threatPanelTheme.buttonSubtitleLight}`}>
-                          {t('verifyDeepUrlHint')}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: threatPanelTheme.actionText }}>
-                      {t('verifyInvestigate')}
-                      <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ backgroundColor: `${threatPanelTheme.actionText}18` }}>
-                        <ArrowRight className="h-4 w-4" />
-                      </span>
-                    </div>
-                  </button>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -2289,15 +2213,27 @@ export function VerifyClaim() {
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
+                        <div className={`rounded-2xl border p-5 cursor-pointer transition-all duration-300 hover:-translate-y-0.5 ${
+                          isDarkMode
+                            ? 'bg-white/5 border-white/8 hover:border-[#38BDF8]/40 hover:shadow-[0_12px_26px_rgba(56,189,248,0.18)]'
+                            : 'bg-white border-[#E2E8F0] hover:border-[#7DD3FC] hover:shadow-md'
+                        }`}>
                           <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyEventsCaptured')}</p>
                           <p className={`text-2xl ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{redditEventsCapturedLabel}</p>
                         </div>
-                        <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
+                        <div className={`rounded-2xl border p-5 cursor-pointer transition-all duration-300 hover:-translate-y-0.5 ${
+                          isDarkMode
+                            ? 'bg-white/5 border-white/8 hover:border-[#FB923C]/45 hover:shadow-[0_12px_26px_rgba(251,146,60,0.2)]'
+                            : 'bg-white border-[#E2E8F0] hover:border-[#FDBA74] hover:shadow-md'
+                        }`}>
                           <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyPatientZero')}</p>
-                          <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{redditPatientZeroLabel}</p>
+                          <p className={`text-sm leading-relaxed font-semibold ${isDarkMode ? 'text-[#FB923C]' : 'text-[#C2410C]'}`}>{redditPatientZeroLabel}</p>
                         </div>
-                        <div className={`rounded-2xl border p-5 ${isDarkMode ? 'bg-white/5 border-white/8' : 'bg-white border-[#E2E8F0]'}`}>
+                        <div className={`rounded-2xl border p-5 cursor-pointer transition-all duration-300 hover:-translate-y-0.5 ${
+                          isDarkMode
+                            ? 'bg-white/5 border-white/8 hover:border-[#A78BFA]/40 hover:shadow-[0_12px_26px_rgba(167,139,250,0.2)]'
+                            : 'bg-white border-[#E2E8F0] hover:border-[#C4B5FD] hover:shadow-md'
+                        }`}>
                           <p className={`text-xs uppercase tracking-[0.18em] mb-2 ${isDarkMode ? 'text-[#64748B]' : 'text-[#94A3B8]'}`}>{t('verifyTopAmplifier')}</p>
                           <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>{redditTopAmplifierLabel}</p>
                         </div>
